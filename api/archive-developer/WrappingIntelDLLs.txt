@@ -1,0 +1,25 @@
+I've been promising everyone a write-up on wrapping Intel DLL's with fx32 but haven't had the chance yet. For now I'll just give you the bits of information I wish I had had 2 months ago. If this isn't enough please let me know right away. It will be a good incentive for me to bump it up on my priority list. Anyway I've tested the Intel wrapping myself and it appears to work well. A subsidiary of Corel has wrapped a large number of Intel DLLs with success. 
+
+What you'll basically be doing is writing an Intel DLL that conforms to a COM interface. fx32 knows about COM dll's and will automatically wrap it when you call one (instead of using load library you'll be using CoCreateInstance). If this COM Dll then calls other Intel DLL's these will be wrapped along with it. So the functions in your Intel COM interface will then call the functions in the Intel DLL you want to wrap. There are some standards and limitations you need to conform to. For example all COM functions return a value of type HRESULT. And need to be initially defined as virtual. Also if you're passing pointers to functions as function arguments you're probably not going to be very successfull. (i.e. whats your Intel function going to do with a pointer to an Alpha function) However everything else seems fair game. 
+
+You could also take it a step further. If you want your Alpha exe code to remain the same (i.e. not convert all your function calls to conform to COM ) you could write a dummy alpha dll which contains all the functions in your Intel DLL. Have those functions call the Intel Com wrapper with the COM versions of the functions and the COM interface will then call the Intel DLL. This sounds a bit tedious but in fact the work is straight forward. ALso the speed loss of the extra function hop is sure to negligable to the performance loss you'll be getting from running Intel code through fx32 anyway. It would also mean that if you later do get these Intel DLLs ported all you need to do is replace them with the dummy alpha dll. 
+
+The only catch is: fx32 ( you must have version 1.2 or later)  needs a type library for your COM interface
+And the location of the type library needs to be specified where fx32 looks for it in the registry. The location is:
+
+"FX!32 looks for the TypeLib key under HKEY_CLASSES_ROOT\Inteface\{your custom interface}.
+You need to create a key for your interface under HKEY_CLASSES_ROOT\Interface and add
+the TypeLib key there.  Some TypeLib entries under HKEY_CLASSES_ROOT\CLSID,
+but we don't use those."
+
+Another catch is: If you use the MS wizards they will not register the typelib where fx32 looks for it. Also all the other COM documentation I have used has never suggested I register the typelib where fx32 looks for it. And the person who implemented this at fx32 no longer works there... Furthermore all the MS wizards will use the MIDL compiler though you need this for the typelib all the other code around it will be slow and limiting:
+
+Typelibs can be created with the MIDL compiler. The MIDL compiler will also generate a bunch of proxy and stub code and will use a higher level interface (Dispatch) this is wonderfull if you want to communicate with Visual Basic or with DCOM objects over the network but it is uneccesary overhead for our needs (It also restricts the arguments to simple types (making it basically useless for a general approach for Intel wrappers)). The MIDL compiler compiles a .idl file which is not too different from a c++ header file
+
+The Intel COM wrapper will show up in the fx32 manager and can be optimized and such. (you may consider shipping Netscape with pre-optimized fx32 databases for these DLL's)
+
+You can approach the coding problem two ways: use the MS wizards and hack out what you don't need, or, use the MIDL compiler from the commandline and throw out everything but the typelib. Then use a simple COM template and fill it in. I prefer the later approach. I'm working on a basic generic template that people can fill in... bug me for it and I'll get it done.
+
+Let me know what else you need.
+
+Vincent.

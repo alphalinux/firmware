@@ -1,0 +1,46 @@
+
+
+In this directory you will find an image of an update floppy for SRM
+console from UP1500 Alpha.
+
+To update SRM:
+
+- Use this image to write, "raw", a floppy; something like
+         cat srmupdt.5.6-19.img > /dev/fd0
+  on a Linux machine, with a floppy in a drive, will do.
+  Whatever was on this floppy before will be overwritten.
+  You should end up with a FAT formatted floppy readable on
+  mostly anything and with two files ('albasrm.rom', 'up1500fw.txt')
+  on it.  Verify.
+
+- Check that your floppy device is called 'dva0' by SRM.  You
+  can do that typing 'show dev' at SRM prompt.  If this happen
+  to be called something else (not likely) make a note.
+
+- The next step will really work only after SRM was reinitialized.
+  Power-up or hardware reset will surely get you in this state.
+  At SRM prompt type
+       lfu
+
+- When you will get "...proceed with a standard console update:"
+  type 
+       dva0
+ (or a device name for your floppy if different than dva0; see above).
+
+- Hit Return key on the next colon prompt asking for a file name
+  to accept a default name up1500fw.txt (type this name in full if
+  a proposed default is anything else of things will fail).
+
+- This step is critical and from that moment on you _cannot_ power down
+  as long as you are in update utility.  Make sure that you are
+  not attempting this when power may go away (in the middle of an
+  electric storm, for example) and if you have UPS then use it.
+  At "UPD>" prompt type
+       update
+  and patiently wait.  Complaints about missing "fsb_fw" are harmless.
+  This is an update only for SRM.
+
+- Once you have prompt back type "exit", confirm when asked, and you
+  are done. 'lfu' utility will reinitialize your SRM.  You should
+  see a new version in identification strings printed by SRM on a startup.
+

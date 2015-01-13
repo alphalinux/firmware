@@ -1,0 +1,4575 @@
+diff -ruNb linux-22/Documentation/Configure.help linux/Documentation/Configure.help
+--- linux-22/Documentation/Configure.help	Thu Apr 12 11:36:36 2001
++++ linux/Documentation/Configure.help	Fri May  4 13:19:40 2001
+@@ -1331,6 +1331,12 @@
+ CONFIG_ALPHA_GAMMA
+   Say Y if you have an AS 2000 5/xxx or an AS 2100 5/xxx.
+ 
++EV67 (or later) CPU (speed > 600MHz)
++CONFIG_ALPHA_EV67
++  Say Y if you have an EV67 or later CPU faster than 600MHz.
++  This option will enable performance improvements in the kernel
++  that were specifically written for EV67 and above processors.
++
+ Using SRM as bootloader
+ CONFIG_ALPHA_SRM
+   There are two different types of booting firmware on Alphas: SRM,
+diff -ruNb linux-22/arch/alpha/Makefile linux/arch/alpha/Makefile
+--- linux-22/arch/alpha/Makefile	Thu Apr 12 11:23:32 2001
++++ linux/arch/alpha/Makefile	Fri May  4 13:19:40 2001
+@@ -23,29 +23,44 @@
+ 
+ have_mcpu_ev6 := $(shell if $(CC) -mcpu=ev6 -S -o /dev/null -xc /dev/null > /dev/null 2>&1; then echo y; else echo n; fi)
+ 
++have_mcpu_ev67 := $(shell if $(CC) -mcpu=ev67 -S -o /dev/null -xc /dev/null > /dev/null 2>&1; then echo y; else echo n; fi)
++
+ # Turn on the proper cpu optimizations.
+ ifeq ($(have_mcpu),y)
+   # If GENERIC, make sure to turn off any instruction set extensions that
+   # the host compiler might have on by default.  Given that EV4 and EV5
+   # have the same instruction set, prefer EV5 because an EV5 schedule is
+   # more likely to keep an EV4 processor busy than vice-versa.
++  mcpu_done := n
+   ifeq ($(CONFIG_ALPHA_GENERIC),y)
+     CFLAGS := $(CFLAGS) -mcpu=ev5
++    mcpu_done := y
+   endif
+-  ifeq ($(CONFIG_ALPHA_EV4),y)
+-    CFLAGS := $(CFLAGS) -mcpu=ev4
++  ifeq ($(mcpu_done)$(CONFIG_ALPHA_SX164)$(have_mcpu_pca56),nyy)
++    CFLAGS := $(CFLAGS) -mcpu=pca56
++    mcpu_done := y
+   endif
+-  ifeq ($(CONFIG_ALPHA_PYXIS),y)
++  ifeq ($(mcpu_done)$(CONFIG_ALPHA_PYXIS),ny)
+     CFLAGS := $(CFLAGS) -mcpu=ev56
++    mcpu_done := y
+   endif
+-  ifeq ($(CONFIG_ALPHA_POLARIS),y)
++  ifeq ($(mcpu_done)$(CONFIG_ALPHA_POLARIS),ny)
+     ifeq ($(have_mcpu_pca56),y)
+       CFLAGS := $(CFLAGS) -mcpu=pca56
+     else
+       CFLAGS := $(CFLAGS) -mcpu=ev56
+     endif
++    mcpu_done := y
+   endif
+-  ifeq ($(CONFIG_ALPHA_EV6),y)
++  ifeq ($(mcpu_done)$(CONFIG_ALPHA_EV4),ny)
++    CFLAGS := $(CFLAGS) -mcpu=ev4
++    mcpu_done := y
++  endif
++  ifeq ($(mcpu_done)$(CONFIG_ALPHA_EV67)$(have_mcpu_ev67),nyy)
++    CFLAGS := $(CFLAGS) -mcpu=ev67
++    mcpu_done := y
++  endif
++  ifeq ($(mcpu_done)$(CONFIG_ALPHA_EV6),ny)
+     ifeq ($(have_mcpu_ev6),y)
+       CFLAGS := $(CFLAGS) -mcpu=ev6
+     else
+@@ -55,35 +70,19 @@
+         CFLAGS := $(CFLAGS) -mcpu=ev56
+       endif
+     endif
++    mcpu_done := y
+   endif
+ endif
+ 
+ # For TSUNAMI, we must have the assembler not emulate our instructions.
+-# The same is true for POLARIS.
+-# The same is true for IRONGATE.
++# The same is true for IRONGATE, POLARIS, PYXIS.
+ # BWX is most important, but we don't really want any emulation ever.
++
+ ifeq ($(old_gas),y)
+- ifneq ($(CONFIG_ALPHA_GENERIC)$(CONFIG_ALPHA_TSUNAMI)$(CONFIG_ALPHA_POLARIS)$(CONFIG_ALPHA_IRONGATE),)
+    # How do we do #error in make?
+    CFLAGS := --error-please-upgrade-your-assembler
+- endif
+-else
+- ifeq ($(CONFIG_ALPHA_GENERIC),y)
+-   CFLAGS := $(CFLAGS) -Wa,-mev6
+- endif
+- ifeq ($(CONFIG_ALPHA_PYXIS),y)
+-   CFLAGS := $(CFLAGS) -Wa,-m21164a -DBWIO_ENABLED
+- endif
+- ifeq ($(CONFIG_ALPHA_POLARIS),y)
+-   CFLAGS := $(CFLAGS) -Wa,-m21164pc
+- endif
+- ifeq ($(CONFIG_ALPHA_TSUNAMI),y)
+-   CFLAGS := $(CFLAGS) -Wa,-mev6
+- endif
+- ifeq ($(CONFIG_ALPHA_IRONGATE),y)
+-   CFLAGS := $(CFLAGS) -Wa,-mev6
+- endif
+ endif
++CFLAGS := $(CFLAGS) -Wa,-mev6
+ 
+ HEAD := arch/alpha/kernel/head.o
+ 
+@@ -97,7 +96,7 @@
+ 
+ LIBS := $(TOPDIR)/arch/alpha/lib/lib.a $(LIBS) $(TOPDIR)/arch/alpha/lib/lib.a
+ 
+-MAKEBOOT = $(MAKE) -C arch/$(ARCH)/boot
++MAKEBOOT = $(MAKE) -C arch/alpha/boot
+ 
+ rawboot:
+ 	@$(MAKEBOOT) rawboot
+@@ -116,7 +115,7 @@
+ 	@$(MAKEBOOT) srmboot
+ 
+ archclean:
+-	@$(MAKE) -C arch/$(ARCH)/kernel clean
++	@$(MAKE) -C arch/alpha/kernel clean
+ 	@$(MAKEBOOT) clean
+ 
+ archmrproper:
+diff -ruNb linux-22/arch/alpha/config.in linux/arch/alpha/config.in
+--- linux-22/arch/alpha/config.in	Thu Apr 12 11:36:27 2001
++++ linux/arch/alpha/config.in	Fri May  4 13:19:40 2001
+@@ -51,7 +51,7 @@
+ 	 Takara			CONFIG_ALPHA_TAKARA" Generic
+ 
+ # clear all implied options (don't want default values for those):
+-unset CONFIG_ALPHA_EV4 CONFIG_ALPHA_EV5 CONFIG_ALPHA_EV6
++unset CONFIG_ALPHA_EV4 CONFIG_ALPHA_EV5 CONFIG_ALPHA_EV6 CONFIG_ALPHA_EV67
+ unset CONFIG_PCI CONFIG_ALPHA_EISA
+ unset CONFIG_ALPHA_LCA CONFIG_ALPHA_APECS CONFIG_ALPHA_CIA
+ unset CONFIG_ALPHA_T2 CONFIG_ALPHA_PYXIS CONFIG_ALPHA_POLARIS
+@@ -129,6 +129,19 @@
+ 	define_bool CONFIG_PCI y
+ 	define_bool CONFIG_ALPHA_EV6 y
+ 	define_bool CONFIG_ALPHA_TSUNAMI y
++	bool 'EV67 (or later) CPU (speed > 600MHz)?' CONFIG_ALPHA_EV67_OPTION
++fi
++if [ "$CONFIG_ALPHA_WILDFIRE" = "y" ]
++then
++	define_bool CONFIG_PCI y
++	define_bool CONFIG_ALPHA_EV6 y
++	define_bool CONFIG_ALPHA_EV67 y
++fi
++if [ "$CONFIG_ALPHA_TITAN" = "y" ]
++then
++	define_bool CONFIG_PCI y
++	define_bool CONFIG_ALPHA_EV6 y
++	define_bool CONFIG_ALPHA_EV67 y
+ fi
+ if [ "$CONFIG_ALPHA_RAWHIDE" = "y" ]
+ then
+@@ -151,6 +164,7 @@
+ 	define_bool CONFIG_PCI y
+ 	define_bool CONFIG_ALPHA_EV6 y
+ 	define_bool CONFIG_ALPHA_IRONGATE y
++	define_bool CONFIG_ALPHA_EV67 y
+ fi
+ 
+ if [ "$CONFIG_ALPHA_JENSEN" = "y" -o "$CONFIG_ALPHA_MIKASA" = "y" \
+@@ -183,6 +197,11 @@
+ if [ "$CONFIG_ALPHA_XL" = "y" ]
+ then
+ 	define_bool CONFIG_ALPHA_AVANTI y
++fi
++
++if [ "$CONFIG_ALPHA_EV67_OPTION" = "y" ]
++then
++	define_bool CONFIG_ALPHA_EV67 y
+ fi
+ 
+ if [ "$CONFIG_ALPHA_SABLE" = "y" -o "$CONFIG_ALPHA_RAWHIDE" = "y" \
+diff -ruNb linux-22/arch/alpha/lib/Makefile linux/arch/alpha/lib/Makefile
+--- linux-22/arch/alpha/lib/Makefile	Thu Apr 12 11:23:32 2001
++++ linux/arch/alpha/lib/Makefile	Fri May  4 13:19:40 2001
+@@ -3,32 +3,65 @@
+ #
+ 
+ .S.s:
+-	$(CC) -D__ASSEMBLY__ $(AFLAGS) -E -o $*.s $<
++	$(CPP) -D__ASSEMBLY__ $(CFLAGS) -o $*.s $<
+ .S.o:
+-	$(CC) -D__ASSEMBLY__ $(AFLAGS) -c -o $*.o $<
++	$(CC) -D__ASSEMBLY__ $(CFLAGS) -c -o $*.o $<
+ 
+-OBJS  = __divqu.o __remqu.o __divlu.o __remlu.o memset.o memcpy.o io.o \
+-	checksum.o csum_partial_copy.o strlen.o \
+-	strcat.o strcpy.o strncat.o strncpy.o stxcpy.o stxncpy.o \
+-	strchr.o strrchr.o \
+-	copy_user.o clear_user.o strncpy_from_user.o strlen_user.o \
+-	csum_ipv6_magic.o strcasecmp.o semaphore.o \
++# Many of these routines have implementations tuned for ev6.
++# Choose them iff we're targeting ev6 specifically.
++ev6 :=
++ifeq ($(CONFIG_ALPHA_EV6),y)
++  ev6 := ev6-
++endif
++
++# Several make use of the cttz instruction introduced in ev67.
++ev67 :=
++ifeq ($(CONFIG_ALPHA_EV67),y)
++  ev67 := ev67-
++endif
++
++OBJS =	__divqu.o __remqu.o __divlu.o __remlu.o \
++	$(ev6)memset.o \
++	$(ev6)memcpy.o \
++	memmove.o \
++	io.o \
++	checksum.o \
++	csum_partial_copy.o \
++	$(ev67)strlen.o \
++	$(ev67)strcat.o \
++	strcpy.o \
++	$(ev67)strncat.o \
++	strncpy.o \
++	$(ev6)stxcpy.o \
++	$(ev6)stxncpy.o \
++	$(ev67)strchr.o \
++	$(ev67)strrchr.o \
++	$(ev6)memchr.o \
++	$(ev6)copy_user.o \
++	$(ev6)clear_user.o \
++	$(ev6)strncpy_from_user.o \
++	$(ev67)strlen_user.o \
++	csum_ipv6_magic.o \
++	strcasecmp.o \
++	$(ev6)clear_page.o \
++	$(ev6)copy_page.o \
++	semaphore.o \
+ 	callback_srm.o callback_init.o srm_puts.o srm_printk.o
+ 
+ lib.a: $(OBJS)
+ 	$(AR) rcs lib.a $(OBJS)
+ 
+-__divqu.o: divide.S
+-	$(CC) -DDIV -c -o __divqu.o divide.S
++__divqu.o: $(ev6)divide.S
++	$(CC) $(AFLAGS) $(CFLAGS) -DDIV -c -o __divqu.o $(ev6)divide.S
+ 
+-__remqu.o: divide.S
+-	$(CC) -DREM -c -o __remqu.o divide.S
++__remqu.o: $(ev6)divide.S
++	$(CC) $(AFLAGS) $(CFLAGS) -DREM -c -o __remqu.o $(ev6)divide.S
+ 
+-__divlu.o: divide.S
+-	$(CC) -DDIV -DINTSIZE -c -o __divlu.o divide.S
++__divlu.o: $(ev6)divide.S
++	$(CC) $(AFLAGS) $(CFLAGS) -DDIV -DINTSIZE -c -o __divlu.o $(ev6)divide.S
+ 
+-__remlu.o: divide.S
+-	$(CC) -DREM -DINTSIZE -c -o __remlu.o divide.S
++__remlu.o: $(ev6)divide.S
++	$(CC) $(AFLAGS) $(CFLAGS) -DREM -DINTSIZE -c -o __remlu.o $(ev6)divide.S
+ 
+ dep:
+ 
+diff -ruNb linux-22/arch/alpha/lib/checksum.c linux/arch/alpha/lib/checksum.c
+--- linux-22/arch/alpha/lib/checksum.c	Thu Apr 12 11:23:32 2001
++++ linux/arch/alpha/lib/checksum.c	Fri May  4 13:19:40 2001
+@@ -3,6 +3,10 @@
+  *
+  * This file contains network checksum routines that are better done
+  * in an architecture-specific manner due to speed..
++ * Comments in other versions indicate that the algorithms are from RFC1071
++ *
++ * accellerated versions (and 21264 assembly versions ) contributed by
++ *	Rick Gorton	<rick.gorton@alpha-processor.com>
+  */
+  
+ #include <linux/string.h>
+@@ -11,15 +15,27 @@
+ 
+ static inline unsigned short from64to16(unsigned long x)
+ {
+-	/* add up 32-bit words for 33 bits */
+-	x = (x & 0xffffffff) + (x >> 32);
+-	/* add up 16-bit and 17-bit words for 17+c bits */
+-	x = (x & 0xffff) + (x >> 16);
+-	/* add up 16-bit and 2-bit for 16+c bit */
+-	x = (x & 0xffff) + (x >> 16);
+-	/* add up carry.. */
+-	x = (x & 0xffff) + (x >> 16);
+-	return x;
++	/*
++	 * using extract instructions is a bit more efficient
++	 * than the original shift/bitmask version.
++	 */
++
++    union {
++	unsigned long	ul;
++	unsigned int	ui[2];
++	unsigned short	us[4];
++	} in_v, tmp_v, out_v;
++
++    in_v.ul = x;
++    tmp_v.ul = (unsigned long) in_v.ui[0] + (unsigned long) in_v.ui[1];
++    out_v.ul = (unsigned long) tmp_v.us[0] + (unsigned long) tmp_v.us[1]
++			+ (unsigned long) tmp_v.us[2];
++	/*
++	 * Since the bits of tmp_v.sh[3] are going to always be zero,
++	 * we don't have to bother to add that in.
++	 * Similarly, out_v.us[2] is always zero for the final add.
++	 */
++    return (out_v.us[0] + out_v.us[1]);
+ }
+ 
+ /*
+diff -ruNb linux-22/arch/alpha/lib/csum_partial_copy.c linux/arch/alpha/lib/csum_partial_copy.c
+--- linux-22/arch/alpha/lib/csum_partial_copy.c	Thu Apr 12 11:36:27 2001
++++ linux/arch/alpha/lib/csum_partial_copy.c	Fri May  4 13:19:40 2001
+@@ -67,6 +67,31 @@
+ 	__puu_err;					\
+ })
+ 
++static inline unsigned short from64to16(unsigned long x)
++{
++	/*
++	 * using extract instructions is a bit more efficient
++	 * than the original shift/bitmask version.  Cloned from
++	 * checksum.c version.
++	 */
++
++    union {
++	unsigned long	ul;
++	unsigned int	ui[2];
++	unsigned short	us[4];
++	} in_v, tmp_v, out_v;
++
++    in_v.ul = x;
++    tmp_v.ul = (unsigned long) in_v.ui[0] + (unsigned long) in_v.ui[1];
++    out_v.ul = (unsigned long) tmp_v.us[0] + (unsigned long) tmp_v.us[1]
++			+ (unsigned long) tmp_v.us[2];
++	/*
++	 * Since the bits of tmp_v.sh[3] are going to always be zero,
++	 * we don't have to bother to add that in.
++	 * Similarly, out_v.us[2] is always zero for the final add.
++	 */
++    return (out_v.us[0] + out_v.us[1]);
++}
+ 
+ /*
+  * Ok. This isn't fun, but this is the EASY case.
+@@ -335,13 +360,7 @@
+ 					soff, doff, len-8, checksum,
+ 					partial_dest, errp);
+ 		}
+-		/* 64 -> 33 bits */
+-		checksum = (checksum & 0xffffffff) + (checksum >> 32);
+-		/* 33 -> < 32 bits */
+-		checksum = (checksum & 0xffff) + (checksum >> 16);
+-		/* 32 -> 16 bits */
+-		checksum = (checksum & 0xffff) + (checksum >> 16);
+-		checksum = (checksum & 0xffff) + (checksum >> 16);
++		checksum = from64to16 (checksum);
+ 	}
+ 	return checksum;
+ }
+diff -ruNb linux-22/arch/alpha/lib/ev6-clear_page.S linux/arch/alpha/lib/ev6-clear_page.S
+--- linux-22/arch/alpha/lib/ev6-clear_page.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-clear_page.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,54 @@
++/*
++ * arch/alpha/lib/ev6-clear_page.S
++ *
++ * Zero an entire page.
++ */
++
++        .text
++        .align 4
++        .global clear_page
++        .ent clear_page
++clear_page:
++        .prologue 0
++
++	lda	$0,128
++	lda	$1,125
++	addq	$16,64,$2
++	addq	$16,128,$3
++
++	addq	$16,192,$17
++	wh64	($16)
++	wh64	($2)
++	wh64	($3)
++
++1:	wh64	($17)
++	stq	$31,0($16)
++	subq	$0,1,$0
++	subq	$1,1,$1
++
++	stq	$31,8($16)
++	stq	$31,16($16)
++	addq	$17,64,$2
++	nop
++
++	stq	$31,24($16)
++	stq	$31,32($16)
++	cmovgt	$1,$2,$17
++	nop
++
++	stq	$31,40($16)
++	stq	$31,48($16)
++	nop
++	nop
++
++	stq	$31,56($16)
++	addq	$16,64,$16
++	nop
++	bne	$0,1b
++
++	ret
++	nop
++	nop
++	nop
++
++	.end clear_page
+diff -ruNb linux-22/arch/alpha/lib/ev6-clear_user.S linux/arch/alpha/lib/ev6-clear_user.S
+--- linux-22/arch/alpha/lib/ev6-clear_user.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-clear_user.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,228 @@
++/*
++ * arch/alpha/lib/ev6-clear_user.S
++ * 21264 version contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Zero user space, handling exceptions as we go.
++ *
++ * We have to make sure that $0 is always up-to-date and contains the
++ * right "bytes left to zero" value (and that it is updated only _after_
++ * a successful copy).  There is also some rather minor exception setup
++ * stuff.
++ *
++ * NOTE! This is not directly C-callable, because the calling semantics
++ * are different:
++ *
++ * Inputs:
++ *	length in $0
++ *	destination address in $6
++ *	exception pointer in $7
++ *	return address in $28 (exceptions expect it there)
++ *
++ * Outputs:
++ *	bytes left to copy in $0
++ *
++ * Clobbers:
++ *	$1,$2,$3,$4,$5,$6
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ * Determining actual stalls (other than slotting) doesn't appear to be easy to do.
++ * From perusing the source code context where this routine is called, it is
++ * a fair assumption that significant fractions of entire pages are zeroed, so
++ * it's going to be worth the effort to hand-unroll a big loop, and use wh64.
++ * ASSUMPTION:
++ *	The believed purpose of only updating $0 after a store is that a signal
++ *	may come along during the execution of this chunk of code, and we don't
++ *	want to leave a hole (and we also want to avoid repeating lots of work)
++ */
++
++/* Allow an exception for an insn; exit if we get one.  */
++#define EX(x,y...)			\
++	99: x,##y;			\
++	.section __ex_table,"a";	\
++	.gprel32 99b;			\
++	lda $31, $exception-99b($31); 	\
++	.previous
++
++	.set noat
++	.set noreorder
++	.align 4
++
++	.globl __do_clear_user
++	.ent __do_clear_user
++	.frame	$30, 0, $28
++	.prologue 0
++
++				# Pipeline info : Slotting & Comments
++__do_clear_user:
++	ldgp	$29,0($27)	# we do exceptions -- we need the gp.
++				# Macro instruction becomes ldah/lda
++				# .. .. E  E	:
++	and	$6, 7, $4	# .. E  .. ..	: find dest head misalignment
++	beq	$0, $zerolength # U  .. .. ..	:  U L U L
++
++	addq	$0, $4, $1	# .. .. .. E	: bias counter
++	and	$1, 7, $2	# .. .. E  ..	: number of misaligned bytes in tail
++# Note - we never actually use $2, so this is a moot computation
++# and we can rewrite this later...
++	srl	$1, 3, $1	# .. E  .. ..	: number of quadwords to clear
++	beq	$4, $headalign	# U  .. .. ..	: U L U L
++
++/*
++ * Head is not aligned.  Write (8 - $4) bytes to head of destination
++ * This means $6 is known to be misaligned
++ */
++	EX( ldq_u $5, 0($6) )	# .. .. .. L	: load dst word to mask back in
++	beq	$1, $onebyte	# .. .. U  ..	: sub-word store?
++	mskql	$5, $6, $5	# .. U  .. ..	: take care of misaligned head
++	addq	$6, 8, $6	# E  .. .. .. 	: L U U L
++
++	EX( stq_u $5, -8($6) )	# .. .. .. L	:
++	subq	$1, 1, $1	# .. .. E  ..	:
++	addq	$0, $4, $0	# .. E  .. ..	: bytes left -= 8 - misalignment
++	subq	$0, 8, $0	# E  .. .. ..	: U L U L
++
++	.align	4
++/*
++ * (The .align directive ought to be a moot point)
++ * values upon initial entry to the loop
++ * $1 is number of quadwords to clear (zero is a valid value)
++ * $2 is number of trailing bytes (0..7) ($2 never used...)
++ * $6 is known to be aligned 0mod8
++ */
++$headalign:
++	subq	$1, 16, $4	# .. .. .. E	: If < 16, we can not use the huge loop
++	and	$6, 0x3f, $2	# .. .. E  ..	: Forward work for huge loop
++	subq	$2, 0x40, $3	# .. E  .. ..	: bias counter (huge loop)
++	blt	$4, $trailquad	# U  .. .. ..	: U L U L
++
++/*
++ * We know that we're going to do at least 16 quads, which means we are
++ * going to be able to use the large block clear loop at least once.
++ * Figure out how many quads we need to clear before we are 0mod64 aligned
++ * so we can use the wh64 instruction.
++ */
++
++	nop			# .. .. .. E
++	nop			# .. .. E  ..
++	nop			# .. E  .. ..
++	beq	$3, $bigalign	# U  .. .. ..	: U L U L : Aligned 0mod64
++
++$alignmod64:
++	EX( stq_u $31, 0($6) )	# .. .. .. L
++	addq	$3, 8, $3	# .. .. E  ..
++	subq	$0, 8, $0	# .. E  .. ..
++	nop			# E  .. .. ..	: U L U L
++
++	nop			# .. .. .. E
++	subq	$1, 1, $1	# .. .. E  ..
++	addq	$6, 8, $6	# .. E  .. ..
++	blt	$3, $alignmod64	# U  .. .. ..	: U L U L
++
++$bigalign:
++/*
++ * $0 is the number of bytes left
++ * $1 is the number of quads left
++ * $6 is aligned 0mod64
++ * we know that we'll be taking a minimum of one trip through
++ * CWG Section 3.7.6: do not expect a sustained store rate of > 1/cycle
++ * We are _not_ going to update $0 after every single store.  That
++ * would be silly, because there will be cross-cluster dependencies
++ * no matter how the code is scheduled.  By doing it in slightly
++ * staggered fashion, we can still do this loop in 5 fetches
++ * The worse case will be doing two extra quads in some future execution,
++ * in the event of an interrupted clear.
++ * Assumes the wh64 needs to be for 2 trips through the loop in the future
++ * The wh64 is issued on for the starting destination address for trip +2
++ * through the loop, and if there are less than two trips left, the target
++ * address will be for the current trip.
++ */
++	nop			# E :
++	nop			# E :
++	nop			# E :
++	bis	$6,$6,$3	# E : U L U L : Initial wh64 address is dest
++	/* This might actually help for the current trip... */
++
++$do_wh64:
++	wh64	($3)		# .. .. .. L1	: memory subsystem hint
++	subq	$1, 16, $4	# .. .. E  ..	: Forward calculation - repeat the loop?
++	EX( stq_u $31, 0($6) )	# .. L  .. ..
++	subq	$0, 8, $0	# E  .. .. ..	: U L U L
++
++	addq	$6, 128, $3	# E : Target address of wh64
++	EX( stq_u $31, 8($6) )	# L :
++	EX( stq_u $31, 16($6) )	# L :
++	subq	$0, 16, $0	# E : U L L U
++
++	nop			# E :
++	EX( stq_u $31, 24($6) )	# L :
++	EX( stq_u $31, 32($6) )	# L :
++	subq	$0, 168, $5	# E : U L L U : two trips through the loop left?
++	/* 168 = 192 - 24, since we've already completed some stores */
++
++	subq	$0, 16, $0	# E :
++	EX( stq_u $31, 40($6) )	# L :
++	EX( stq_u $31, 48($6) )	# L :
++	cmovlt	$5, $6, $3	# E : U L L U : Latency 2, extra mapping cycle
++
++	subq	$1, 8, $1	# E :
++	subq	$0, 16, $0	# E :
++	EX( stq_u $31, 56($6) )	# L :
++	nop			# E : U L U L
++
++	nop			# E :
++	subq	$0, 8, $0	# E :
++	addq	$6, 64, $6	# E :
++	bge	$4, $do_wh64	# U : U L U L
++
++$trailquad:
++	# zero to 16 quadwords left to store, plus any trailing bytes
++	# $1 is the number of quadwords left to go.
++	# 
++	nop			# .. .. .. E
++	nop			# .. .. E  ..
++	nop			# .. E  .. ..
++	beq	$1, $trailbytes	# U  .. .. ..	: U L U L : Only 0..7 bytes to go
++
++$onequad:
++	EX( stq_u $31, 0($6) )	# .. .. .. L
++	subq	$1, 1, $1	# .. .. E  ..
++	subq	$0, 8, $0	# .. E  .. ..
++	nop			# E  .. .. ..	: U L U L
++
++	nop			# .. .. .. E
++	nop			# .. .. E  ..
++	addq	$6, 8, $6	# .. E  .. ..
++	bgt	$1, $onequad	# U  .. .. ..	: U L U L
++
++	# We have an unknown number of bytes left to go.
++$trailbytes:
++	nop			# .. .. .. E
++	nop			# .. .. E  ..
++	nop			# .. E  .. ..
++	beq	$0, $zerolength	# U  .. .. ..	: U L U L
++
++	# $0 contains the number of bytes left to copy (0..31)
++	# so we will use $0 as the loop counter
++	# We know for a fact that $0 > 0 zero due to previous context
++$onebyte:
++	EX( stb $31, 0($6) )	# .. .. .. L
++	subq	$0, 1, $0	# .. .. E  ..	:
++	addq	$6, 1, $6	# .. E  .. ..	:
++	bgt	$0, $onebyte	# U  .. .. ..	: U L U L
++
++$zerolength:
++$exception:			# Destination for exception recovery(?)
++	nop			# .. .. .. E	:
++	nop			# .. .. E  ..	:
++	nop			# .. E  .. ..	:
++	ret	$31, ($28), 1	# L0 .. .. ..	: L U L U
++	.end __do_clear_user
++
+diff -ruNb linux-22/arch/alpha/lib/ev6-copy_page.S linux/arch/alpha/lib/ev6-copy_page.S
+--- linux-22/arch/alpha/lib/ev6-copy_page.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-copy_page.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,203 @@
++/*
++ * arch/alpha/lib/ev6-copy_page.S
++ *
++ * Copy an entire page.
++ */
++
++/* The following comparison of this routine vs the normal copy_page.S
++   was written by an unnamed ev6 hardware designer and forwarded to me
++   via Steven Hobbs <hobbs@steven.zko.dec.com>.
++ 
++   First Problem: STQ overflows.
++   -----------------------------
++
++	It would be nice if EV6 handled every resource overflow efficiently,
++	but for some it doesn't.  Including store queue overflows.  It causes
++	a trap and a restart of the pipe.
++
++	To get around this we sometimes use (to borrow a term from a VSSAD
++	researcher) "aeration".  The idea is to slow the rate at which the
++	processor receives valid instructions by inserting nops in the fetch
++	path.  In doing so, you can prevent the overflow and actually make
++	the code run faster.  You can, of course, take advantage of the fact
++	that the processor can fetch at most 4 aligned instructions per cycle.
++
++	I inserted enough nops to force it to take 10 cycles to fetch the
++	loop code.  In theory, EV6 should be able to execute this loop in
++	9 cycles but I was not able to get it to run that fast -- the initial
++	conditions were such that I could not reach this optimum rate on
++	(chaotic) EV6.  I wrote the code such that everything would issue
++	in order. 
++
++   Second Problem: Dcache index matches.
++   -------------------------------------
++
++	If you are going to use this routine on random aligned pages, there
++	is a 25% chance that the pages will be at the same dcache indices.
++	This results in many nasty memory traps without care.
++
++	The solution is to schedule the prefetches to avoid the memory
++	conflicts.  I schedule the wh64 prefetches farther ahead of the
++	read prefetches to avoid this problem.
++
++   Third Problem: Needs more prefetching.
++   --------------------------------------
++
++	In order to improve the code I added deeper prefetching to take the
++	most advantage of EV6's bandwidth.
++
++	I also prefetched the read stream. Note that adding the read prefetch
++	forced me to add another cycle to the inner-most kernel - up to 11
++	from the original 8 cycles per iteration.  We could improve performance
++	further by unrolling the loop and doing multiple prefetches per cycle.
++
++   I think that the code below will be very robust and fast code for the
++   purposes of copying aligned pages.  It is slower when both source and
++   destination pages are in the dcache, but it is my guess that this is
++   less important than the dcache miss case.  */
++
++
++	.text
++	.align 4
++	.global copy_page
++	.ent copy_page
++copy_page:
++	.prologue 0
++
++	/* Prefetch 5 read cachelines; write-hint 10 cache lines.  */
++	wh64	($16)
++	ldl	$31,0($17)
++	ldl	$31,64($17)
++	lda	$1,1*64($16)
++
++	wh64	($1)
++	ldl	$31,128($17)
++	ldl	$31,192($17)
++	lda	$1,2*64($16)
++
++	wh64	($1)
++	ldl	$31,256($17)
++	lda	$18,118
++	lda	$1,3*64($16)
++
++	wh64	($1)
++	nop
++	lda	$1,4*64($16)
++	lda	$2,5*64($16)
++
++	wh64	($1)
++	wh64	($2)
++	lda	$1,6*64($16)
++	lda	$2,7*64($16)
++
++	wh64	($1)
++	wh64	($2)
++	lda	$1,8*64($16)
++	lda	$2,9*64($16)
++
++	wh64	($1)
++	wh64	($2)
++	lda	$19,10*64($16)
++	nop
++
++	/* Main prefetching/write-hinting loop.  */
++1:	ldq	$0,0($17)
++	ldq	$1,8($17)
++	unop
++	unop
++
++	unop
++	unop
++	ldq	$2,16($17)
++	ldq	$3,24($17)
++
++	ldq	$4,32($17)
++	ldq	$5,40($17)
++	unop
++	unop
++
++	unop
++	unop
++	ldq	$6,48($17)
++	ldq	$7,56($17)
++
++	ldl	$31,320($17)
++	unop
++	unop
++	unop
++
++	/* This gives the extra cycle of aeration above the minimum.  */
++	unop			
++	unop
++	unop
++	unop
++
++	wh64	($19)
++	unop
++	unop
++	unop
++
++	stq	$0,0($16)
++	subq	$18,1,$18
++	stq	$1,8($16)
++	unop
++
++	unop
++	stq	$2,16($16)
++	addq	$17,64,$17
++	stq	$3,24($16)
++
++	stq	$4,32($16)
++	stq	$5,40($16)
++	addq	$19,64,$19
++	unop
++
++	stq	$6,48($16)
++	stq	$7,56($16)
++	addq	$16,64,$16
++	bne	$18, 1b
++
++	/* Prefetch the final 5 cache lines of the read stream.  */
++	lda	$18,10
++	ldl	$31,320($17)
++	ldl	$31,384($17)
++	ldl	$31,448($17)
++
++	ldl	$31,512($17)
++	ldl	$31,576($17)
++	nop
++	nop
++
++	/* Non-prefetching, non-write-hinting cleanup loop for the
++	   final 10 cache lines.  */
++2:	ldq	$0,0($17)
++	ldq	$1,8($17)
++	ldq	$2,16($17)
++	ldq	$3,24($17)
++
++	ldq	$4,32($17)
++	ldq	$5,40($17)
++	ldq	$6,48($17)
++	ldq	$7,56($17)
++
++	stq	$0,0($16)
++	subq	$18,1,$18
++	stq	$1,8($16)
++	addq	$17,64,$17
++
++	stq	$2,16($16)
++	stq	$3,24($16)
++	stq	$4,32($16)
++	stq	$5,40($16)
++
++	stq	$6,48($16)
++	stq	$7,56($16)
++	addq	$16,64,$16
++	bne	$18, 2b
++
++	ret
++	nop
++	unop
++	nop
++
++	.end copy_page
+diff -ruNb linux-22/arch/alpha/lib/ev6-copy_user.S linux/arch/alpha/lib/ev6-copy_user.S
+--- linux-22/arch/alpha/lib/ev6-copy_user.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-copy_user.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,262 @@
++/*
++ * arch/alpha/lib/ev6-copy_user.S
++ *
++ * 21264 version contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Copy to/from user space, handling exceptions as we go..  This
++ * isn't exactly pretty.
++ *
++ * This is essentially the same as "memcpy()", but with a few twists.
++ * Notably, we have to make sure that $0 is always up-to-date and
++ * contains the right "bytes left to copy" value (and that it is updated
++ * only _after_ a successful copy). There is also some rather minor
++ * exception setup stuff..
++ *
++ * NOTE! This is not directly C-callable, because the calling semantics are
++ * different:
++ *
++ * Inputs:
++ *	length in $0
++ *	destination address in $6
++ *	source address in $7
++ *	return address in $28
++ *
++ * Outputs:
++ *	bytes left to copy in $0
++ *
++ * Clobbers:
++ *	$1,$2,$3,$4,$5,$6,$7
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ */
++
++/* Allow an exception for an insn; exit if we get one.  */
++#define EXI(x,y...)			\
++	99: x,##y;			\
++	.section __ex_table,"a";	\
++	.gprel32 99b;			\
++	lda $31, $exitin-99b($31);	\
++	.previous
++
++#define EXO(x,y...)			\
++	99: x,##y;			\
++	.section __ex_table,"a";	\
++	.gprel32 99b;			\
++	lda $31, $exitout-99b($31);	\
++	.previous
++
++	.set noat
++	.align 4
++	.globl __copy_user
++	.ent __copy_user
++				# Pipeline info: Slotting & Comments
++__copy_user:
++	ldgp $29,0($27)		# we do exceptions -- we need the gp.
++				# Macro instruction becomes ldah/lda
++				# .. .. E  E
++	.prologue 1
++	subq $0, 32, $1		# .. E  .. ..	: Is this going to be a small copy?
++	beq $0, $zerolength	# U  .. .. ..	: U L U L
++
++	and $6,7,$3		# .. .. .. E	: is leading dest misalignment
++	ble $1, $onebyteloop	# .. .. U  ..	: 1st branch : small amount of data
++	beq $3, $destaligned	# .. U  .. ..	: 2nd (one cycle fetcher stall)
++	subq $3, 8, $3		# E  .. .. ..	: L U U L : trip counter
++/*
++ * The fetcher stall also hides the 1 cycle cross-cluster stall for $3 (L --> U)
++ * This loop aligns the destination a byte at a time
++ * We know we have at least one trip through this loop
++ */
++$aligndest:
++	EXI( ldbu $1,0($7) )	# .. .. .. L	: Keep loads separate from stores
++	addq $6,1,$6		# .. .. E  ..	: Section 3.8 in the CWG
++	addq $3,1,$3		# .. E  .. ..	:
++	nop			# E  .. .. ..	: U L U L
++
++/*
++ * the -1 is to compensate for the inc($6) done in a previous quadpack
++ * which allows us zero dependencies within either quadpack in the loop
++ */
++	EXO( stb $1,-1($6) )	# .. .. .. L	:
++	addq $7,1,$7		# .. .. E  ..	: Section 3.8 in the CWG
++	subq $0,1,$0		# .. E  .. ..	:
++	bne $3, $aligndest	# U  .. .. ..	: U L U L
++
++/*
++ * If we fell through into here, we have a minimum of 33 - 7 bytes
++ * If we arrived via branch, we have a minimum of 32 bytes
++ */
++$destaligned:
++	and $7,7,$1		# .. .. .. E	: Check _current_ source alignment
++	bic $0,7,$4		# .. .. E  ..	: number bytes as a quadword loop
++	EXI( ldq_u $3,0($7) )	# .. L  .. ..	: Forward fetch for fallthrough code
++	beq $1,$quadaligned	# U  .. .. ..	: U L U L
++
++/*
++ * In the worst case, we've just executed an ldq_u here from 0($7)
++ * and we'll repeat it once if we take the branch
++ */
++
++/* Misaligned quadword loop - not unrolled.  Leave it that way. */
++$misquad:
++	EXI( ldq_u $2,8($7) )	# .. .. .. L	:
++	subq $4,8,$4		# .. .. E  ..	:
++	extql $3,$7,$3		# .. U  .. ..	:
++	extqh $2,$7,$1		# U  .. .. ..	: U U L L
++
++	bis $3,$1,$1		# .. .. .. E	:
++	EXO( stq $1,0($6) )	# .. .. L  ..	:
++	addq $7,8,$7		# .. E  .. ..	:
++	subq $0,8,$0		# E  .. .. ..	: U L L U
++
++	addq $6,8,$6		# .. .. .. E	:
++	bis $2,$2,$3		# .. .. E  ..	:
++	nop			# .. E  .. ..	:
++	bne $4,$misquad		# U  .. .. ..	: U L U L
++
++	nop			# .. .. .. E
++	nop			# .. .. E  ..
++	nop			# .. E  .. ..
++	beq $0,$zerolength	# U  .. .. ..	: U L U L
++
++/* We know we have at least one trip through the byte loop */
++	EXI ( ldbu $2,0($7) )	# .. .. .. L	: No loads in the same quad
++	addq $6,1,$6		# .. .. E  ..	: as the store (Section 3.8 in CWG)
++	nop			# .. E  .. ..	:
++	br $31, $dirtyentry	# L0 .. .. ..	: L U U L
++/* Do the trailing byte loop load, then hop into the store part of the loop */
++
++/*
++ * A minimum of (33 - 7) bytes to do a quad at a time.
++ * Based upon the usage context, it's worth the effort to unroll this loop
++ * $0 - number of bytes to be moved
++ * $4 - number of bytes to move as quadwords
++ * $6 is current destination address
++ * $7 is current source address
++ */
++$quadaligned:
++	subq	$4, 32, $2	# .. .. .. E	: do not unroll for small stuff
++	nop			# .. .. E  ..
++	nop			# .. E  .. ..
++	blt	$2, $onequad	# U  .. .. ..	: U L U L
++
++/*
++ * There is a significant assumption here that the source and destination
++ * addresses differ by more than 32 bytes.  In this particular case, a
++ * sparsity of registers further bounds this to be a minimum of 8 bytes.
++ * But if this isn't met, then the output result will be incorrect.
++ * Furthermore, due to a lack of available registers, we really can't
++ * unroll this to be an 8x loop (which would enable us to use the wh64
++ * instruction memory hint instruction).
++ */
++$unroll4:
++	EXI( ldq $1,0($7) )	# .. .. .. L
++	EXI( ldq $2,8($7) )	# .. .. L  ..
++	subq	$4,32,$4	# .. E  .. ..
++	nop			# E  .. .. ..	: U U L L
++
++	addq	$7,16,$7	# .. .. .. E
++	EXO( stq $1,0($6) )	# .. .. L  ..
++	EXO( stq $2,8($6) )	# .. L  .. ..
++	subq	$0,16,$0	# E  .. .. ..	: U L L U
++
++	addq	$6,16,$6	# .. .. .. E
++	EXI( ldq $1,0($7) )	# .. .. L  ..
++	EXI( ldq $2,8($7) )	# .. L  .. ..
++	subq	$4, 32, $3	# E  .. .. ..	: U U L L : is there enough for another trip?
++
++	EXO( stq $1,0($6) )	# .. .. .. L
++	EXO( stq $2,8($6) )	# .. .. L  ..
++	subq	$0,16,$0	# .. E  .. ..
++	addq	$7,16,$7	# E  .. .. ..	: U L L U
++
++	nop			# .. .. .. E
++	nop			# .. .. E  ..
++	addq	$6,16,$6	# .. E  .. ..
++	bgt	$3,$unroll4	# U  .. .. ..	: U L U L
++
++	nop
++	nop
++	nop
++	beq	$4, $noquads
++
++$onequad:
++	EXI( ldq $1,0($7) )
++	subq	$4,8,$4
++	addq	$7,8,$7
++	nop
++
++	EXO( stq $1,0($6) )
++	subq	$0,8,$0
++	addq	$6,8,$6
++	bne	$4,$onequad
++
++$noquads:
++	nop
++	nop
++	nop
++	beq $0,$zerolength
++
++/*
++ * For small copies (or the tail of a larger copy), do a very simple byte loop.
++ * There's no point in doing a lot of complex alignment calculations to try to
++ * to quadword stuff for a small amount of data.
++ *	$0 - remaining number of bytes left to copy
++ *	$6 - current dest addr
++ *	$7 - current source addr
++ */
++
++$onebyteloop:
++	EXI ( ldbu $2,0($7) )	# .. .. .. L	: No loads in the same quad
++	addq $6,1,$6		# .. .. E  ..	: as the store (Section 3.8 in CWG)
++	nop			# .. E  .. ..	:
++	nop			# E  .. .. ..	: U L U L
++
++$dirtyentry:
++/*
++ * the -1 is to compensate for the inc($6) done in a previous quadpack
++ * which allows us zero dependencies within either quadpack in the loop
++ */
++	EXO ( stb $2,-1($6) )	# .. .. .. L	:
++	addq $7,1,$7		# .. .. E  ..	: quadpack as the load
++	subq $0,1,$0		# .. E  .. ..	: change count _after_ copy
++	bgt $0,$onebyteloop	# U  .. .. ..	: U L U L
++
++$zerolength:
++$exitout:			# Destination for exception recovery(?)
++	nop			# .. .. .. E
++	nop			# .. .. E  ..
++	nop			# .. E  .. ..
++	ret $31,($28),1		# L0 .. .. ..	: L U L U
++
++$exitin:
++
++	/* A stupid byte-by-byte zeroing of the rest of the output
++	   buffer.  This cures security holes by never leaving 
++	   random kernel data around to be copied elsewhere.  */
++
++	nop
++	nop
++	nop
++	mov	$0,$1
++
++$101:
++	EXO ( stb $31,0($6) )	# L
++	subq $1,1,$1		# E
++	addq $6,1,$6		# E
++	bgt $1,$101		# U
++
++	nop
++	nop
++	nop
++	ret $31,($28),1		# L0
++
++	.end __copy_user
++
+diff -ruNb linux-22/arch/alpha/lib/ev6-divide.S linux/arch/alpha/lib/ev6-divide.S
+--- linux-22/arch/alpha/lib/ev6-divide.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-divide.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,259 @@
++/*
++ * arch/alpha/lib/ev6-divide.S
++ *
++ * 21264 version contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Alpha division..
++ */
++
++/*
++ * The alpha chip doesn't provide hardware division, so we have to do it
++ * by hand.  The compiler expects the functions
++ *
++ *	__divqu: 64-bit unsigned long divide
++ *	__remqu: 64-bit unsigned long remainder
++ *	__divqs/__remqs: signed 64-bit
++ *	__divlu/__remlu: unsigned 32-bit
++ *	__divls/__remls: signed 32-bit
++ *
++ * These are not normal C functions: instead of the normal
++ * calling sequence, these expect their arguments in registers
++ * $24 and $25, and return the result in $27. Register $28 may
++ * be clobbered (assembly temporary), anything else must be saved. 
++ *
++ * In short: painful.
++ *
++ * This is a rather simple bit-at-a-time algorithm: it's very good
++ * at dividing random 64-bit numbers, but the more usual case where
++ * the divisor is small is handled better by the DEC algorithm
++ * using lookup tables. This uses much less memory, though, and is
++ * nicer on the cache.. Besides, I don't know the copyright status
++ * of the DEC code.
++ */
++
++/*
++ * My temporaries:
++ *	$0 - current bit
++ *	$1 - shifted divisor
++ *	$2 - modulus/quotient
++ *
++ *	$23 - return address
++ *	$24 - dividend
++ *	$25 - divisor
++ *
++ *	$27 - quotient/modulus
++ *	$28 - compare status
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ */
++
++#define halt .long 0
++
++/*
++ * Select function type and registers
++ */
++#define mask	$0
++#define divisor	$1
++#define compare $28
++#define tmp1	$3
++#define tmp2	$4
++
++#ifdef DIV
++#define DIV_ONLY(x,y...) x,##y
++#define MOD_ONLY(x,y...)
++#define func(x) __div##x
++#define modulus $2
++#define quotient $27
++#define GETSIGN(x) xor $24,$25,x
++#define STACK 48
++#else
++#define DIV_ONLY(x,y...)
++#define MOD_ONLY(x,y...) x,##y
++#define func(x) __rem##x
++#define modulus $27
++#define quotient $2
++#define GETSIGN(x) bis $24,$24,x
++#define STACK 32
++#endif
++
++/*
++ * For 32-bit operations, we need to extend to 64-bit
++ */
++#ifdef INTSIZE
++#define ufunction func(lu)
++#define sfunction func(l)
++#define LONGIFY(x) zapnot x,15,x
++#define SLONGIFY(x) addl x,0,x
++#else
++#define ufunction func(qu)
++#define sfunction func(q)
++#define LONGIFY(x)
++#define SLONGIFY(x)
++#endif
++
++.set noat
++.align	4
++.globl	ufunction
++.ent	ufunction
++ufunction:
++	subq	$30,STACK,$30		# E :
++	.frame	$30,STACK,$23
++	.prologue 0
++
++7:	stq	$1, 0($30)		# L :
++	bis	$25,$25,divisor		# E :
++	stq	$2, 8($30)		# L : L U L U
++
++	bis	$24,$24,modulus		# E :
++	stq	$0,16($30)		# L :
++	bis	$31,$31,quotient	# E :
++	LONGIFY(divisor)		# E : U L L U
++
++	stq	tmp1,24($30)		# L :
++	LONGIFY(modulus)		# E :
++	bis	$31,1,mask		# E :
++	DIV_ONLY(stq tmp2,32($30))	# L : L U U L
++
++	beq	divisor, 9f			/* div by zero */
++	/*
++	 * In spite of the DIV_ONLY being either a non-instruction
++	 * or an actual stq, the addition of the .align directive
++	 * below ensures that label 1 is going to be nicely aligned
++	 */
++
++	.align	4
++#ifdef INTSIZE
++	/*
++	 * shift divisor left, using 3-bit shifts for
++	 * 32-bit divides as we can't overflow. Three-bit
++	 * shifts will result in looping three times less
++	 * here, but can result in two loops more later.
++	 * Thus using a large shift isn't worth it (and
++	 * s8add pairs better than a sll..)
++	 */
++1:	cmpult	divisor,modulus,compare	# E :
++	s8addq	divisor,$31,divisor	# E :
++	s8addq	mask,$31,mask		# E :
++	bne	compare,1b		# U : U L U L
++#else
++1:	cmpult	divisor,modulus,compare	# E :
++	nop				# E :
++	nop				# E :
++	blt     divisor, 2f		# U : U L U L
++
++	addq	divisor,divisor,divisor	# E :
++	addq	mask,mask,mask		# E :
++	unop				# E :
++	bne	compare,1b		# U : U L U L
++#endif
++
++	/* ok, start to go right again.. */
++2:
++	/*
++	 * Keep things nicely bundled... use a nop instead of not
++	 * having an instruction for DIV_ONLY
++	 */
++#ifdef DIV
++	DIV_ONLY(addq quotient,mask,tmp2) # E :
++#else
++	nop				# E :
++#endif
++	srl	mask,1,mask		# U :
++	cmpule	divisor,modulus,compare	# E :
++	subq	modulus,divisor,tmp1	# E :
++
++#ifdef DIV
++	DIV_ONLY(cmovne compare,tmp2,quotient)	# E : Latency 2, extra map slot
++	nop				# E : as part of the cmovne
++	srl	divisor,1,divisor	# U :
++	nop				# E : L U L U
++
++	nop				# E :
++	cmovne	compare,tmp1,modulus	# E : Latency 2, extra map slot
++	nop				# E : as part of the cmovne
++	bne	mask,2b			# U : U L U L
++#else
++	srl	divisor,1,divisor	# U :
++	cmovne	compare,tmp1,modulus	# E : Latency 2, extra map slot
++	nop				# E : as part of the cmovne
++	bne	mask,2b			# U : U L L U
++#endif
++
++9:	ldq	$1, 0($30)		# L :
++	ldq	$2, 8($30)		# L :
++	nop				# E :
++	nop				# E : U U L L
++
++	ldq	$0,16($30)		# L :
++	ldq	tmp1,24($30)		# L :
++	nop				# E :
++	nop				# E :
++
++#ifdef DIV
++	DIV_ONLY(ldq tmp2,32($30))	# L :
++#else
++	nop				# E :
++#endif
++	addq	$30,STACK,$30		# E :
++	ret	$31,($23),1		# L0 : L U U L
++	.end	ufunction
++
++/*
++ * Uhh.. Ugly signed division. I'd rather not have it at all, but
++ * it's needed in some circumstances. There are different ways to
++ * handle this, really. This does:
++ * 	-a / b = a / -b = -(a / b)
++ *	-a % b = -(a % b)
++ *	a % -b = a % b
++ * which is probably not the best solution, but at least should
++ * have the property that (x/y)*y + (x%y) = x.
++ */
++.align 4
++.globl	sfunction
++.ent	sfunction
++sfunction:
++	subq	$30,STACK,$30		# E :
++	.frame	$30,STACK,$23
++	.prologue 0
++	bis	$24,$25,$28		# E :
++	SLONGIFY($28)			# E :
++	bge	$28,7b			# U :
++
++	stq	$24,0($30)		# L :
++	subq	$31,$24,$28		# E :
++	stq	$25,8($30)		# L :
++	nop				# E : U L U L
++
++	cmovlt	$24,$28,$24	/* abs($24) */ # E : Latency 2, extra map slot
++	nop				# E : as part of the cmov
++	stq	$23,16($30)		# L :
++	subq	$31,$25,$28		# E : U L U L
++
++	stq	tmp1,24($30)		# L :
++	cmovlt	$25,$28,$25	/* abs($25) */ # E : Latency 2, extra map slot
++	nop				# E :
++	bsr	$23,ufunction		# L0: L U L U
++
++	ldq	$24,0($30)		# L :
++	ldq	$25,8($30)		# L :
++	GETSIGN($28)			# E :
++	subq	$31,$27,tmp1		# E : U U L L
++
++	SLONGIFY($28)			# E :
++	ldq	$23,16($30)		# L :
++	cmovlt	$28,tmp1,$27		# E : Latency 2, extra map slot
++	nop				# E : U L L U : as part of the cmov
++
++	ldq	tmp1,24($30)		# L :
++	nop				# E : as part of the cmov
++	addq	$30,STACK,$30		# E :
++	ret	$31,($23),1		# L0 : L U U L
++	.end	sfunction
+diff -ruNb linux-22/arch/alpha/lib/ev6-memchr.S linux/arch/alpha/lib/ev6-memchr.S
+--- linux-22/arch/alpha/lib/ev6-memchr.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-memchr.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,191 @@
++/*
++ * arch/alpha/lib/ev6-memchr.S
++ *
++ * 21264 version contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Finds characters in a memory area.  Optimized for the Alpha:
++ *
++ *    - memory accessed as aligned quadwords only
++ *    - uses cmpbge to compare 8 bytes in parallel
++ *    - does binary search to find 0 byte in last
++ *      quadword (HAKMEM needed 12 instructions to
++ *      do this instead of the 9 instructions that
++ *      binary search needs).
++ *
++ * For correctness consider that:
++ *
++ *    - only minimum number of quadwords may be accessed
++ *    - the third argument is an unsigned long
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ */
++
++        .set noreorder
++        .set noat
++
++	.align	4
++	.globl memchr
++	.ent memchr
++memchr:
++	.frame $30,0,$26,0
++	.prologue 0
++
++	# Hack -- if someone passes in (size_t)-1, hoping to just
++	# search til the end of the address space, we will overflow
++	# below when we find the address of the last byte.  Given
++	# that we will never have a 56-bit address space, cropping
++	# the length is the easiest way to avoid trouble.
++	zap	$18, 0x80, $5	# U : Bound length
++	beq	$18, $not_found	# U :
++        ldq_u   $1, 0($16)	# L : load first quadword Latency=3
++	and	$17, 0xff, $17	# E : L L U U : 00000000000000ch
++
++	insbl	$17, 1, $2	# U : 000000000000ch00
++	cmpult	$18, 9, $4	# E : small (< 1 quad) string?
++	or	$2, $17, $17	# E : 000000000000chch
++        lda     $3, -1($31)	# E : U L L U
++
++	sll	$17, 16, $2	# U : 00000000chch0000
++	addq	$16, $5, $5	# E : Max search address
++	or	$2, $17, $17	# E : 00000000chchchch
++	sll	$17, 32, $2	# U : U L L U : chchchch00000000
++
++	or	$2, $17, $17	# E : chchchchchchchch
++	extql	$1, $16, $7	# U : $7 is upper bits
++	beq	$4, $first_quad	# U :
++	ldq_u	$6, -1($5)	# L : L U U L : eight or less bytes to search Latency=3
++
++	extqh	$6, $16, $6	# U : 2 cycle stall for $6
++	mov	$16, $0		# E :
++	nop			# E :
++	or	$7, $6, $1	# E : L U L U $1 = quadword starting at $16
++
++	# Deal with the case where at most 8 bytes remain to be searched
++	# in $1.  E.g.:
++	#	$18 = 6
++	#	$1 = ????c6c5c4c3c2c1
++$last_quad:
++	negq	$18, $6		# E :
++        xor	$17, $1, $1	# E :
++	srl	$3, $6, $6	# U : $6 = mask of $18 bits set
++        cmpbge  $31, $1, $2	# E : L U L U
++
++	nop
++	nop
++	and	$2, $6, $2	# E :
++        beq     $2, $not_found	# U : U L U L
++
++$found_it:
++#if defined(__alpha_fix__) && defined(__alpha_cix__)
++	/*
++	 * Since we are guaranteed to have set one of the bits, we don't
++	 * have to worry about coming back with a 0x40 out of cttz...
++	 */
++	cttz	$2, $3		# U0 :
++	addq	$0, $3, $0	# E : All done
++	nop			# E :
++	ret			# L0 : L U L U
++#else
++	/*
++	 * Slow and clunky.  It can probably be improved.
++	 * An exercise left for others.
++	 */
++        negq    $2, $3		# E :
++        and     $2, $3, $2	# E :
++        and     $2, 0x0f, $1	# E :
++        addq    $0, 4, $3	# E :
++
++        cmoveq  $1, $3, $0	# E : Latency 2, extra map cycle
++	nop			# E : keep with cmov
++        and     $2, 0x33, $1	# E :
++        addq    $0, 2, $3	# E : U L U L : 2 cycle stall on $0
++
++        cmoveq  $1, $3, $0	# E : Latency 2, extra map cycle
++	nop			# E : keep with cmov
++        and     $2, 0x55, $1	# E :
++        addq    $0, 1, $3	# E : U L U L : 2 cycle stall on $0
++
++        cmoveq  $1, $3, $0	# E : Latency 2, extra map cycle
++	nop
++	nop
++	ret			# L0 : L U L U
++#endif
++
++	# Deal with the case where $18 > 8 bytes remain to be
++	# searched.  $16 may not be aligned.
++	.align 4
++$first_quad:
++	andnot	$16, 0x7, $0	# E :
++        insqh   $3, $16, $2	# U : $2 = 0000ffffffffffff ($16<0:2> ff)
++        xor	$1, $17, $1	# E :
++	or	$1, $2, $1	# E : U L U L $1 = ====ffffffffffff
++
++        cmpbge  $31, $1, $2	# E :
++        bne     $2, $found_it	# U :
++	# At least one byte left to process.
++	ldq	$1, 8($0)	# L :
++	subq	$5, 1, $18	# E : U L U L
++
++	addq	$0, 8, $0	# E :
++	# Make $18 point to last quad to be accessed (the
++	# last quad may or may not be partial).
++	andnot	$18, 0x7, $18	# E :
++	cmpult	$0, $18, $2	# E :
++	beq	$2, $final	# U : U L U L
++
++	# At least two quads remain to be accessed.
++
++	subq	$18, $0, $4	# E : $4 <- nr quads to be processed
++	and	$4, 8, $4	# E : odd number of quads?
++	bne	$4, $odd_quad_count # U :
++	# At least three quads remain to be accessed
++	mov	$1, $4		# E : L U L U : move prefetched value to correct reg
++
++	.align	4
++$unrolled_loop:
++	ldq	$1, 8($0)	# L : prefetch $1
++	xor	$17, $4, $2	# E :
++	cmpbge	$31, $2, $2	# E :
++	bne	$2, $found_it	# U : U L U L
++
++	addq	$0, 8, $0	# E :
++	nop			# E :
++	nop			# E :
++	nop			# E :
++
++$odd_quad_count:
++	xor	$17, $1, $2	# E :
++	ldq	$4, 8($0)	# L : prefetch $4
++	cmpbge	$31, $2, $2	# E :
++	addq	$0, 8, $6	# E :
++
++	bne	$2, $found_it	# U :
++	cmpult	$6, $18, $6	# E :
++	addq	$0, 8, $0	# E :
++	nop			# E :
++
++	bne	$6, $unrolled_loop # U :
++	mov	$4, $1		# E : move prefetched value into $1
++	nop			# E :
++	nop			# E :
++
++$final:	subq	$5, $0, $18	# E : $18 <- number of bytes left to do
++	nop			# E :
++	nop			# E :
++	bne	$18, $last_quad	# U :
++
++$not_found:
++	mov	$31, $0		# E :
++	nop			# E :
++	nop			# E :
++	ret			# L0 :
++
++        .end memchr
+diff -ruNb linux-22/arch/alpha/lib/ev6-memcpy.S linux/arch/alpha/lib/ev6-memcpy.S
+--- linux-22/arch/alpha/lib/ev6-memcpy.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-memcpy.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,248 @@
++/*
++ * arch/alpha/lib/ev6-memcpy.S
++ * 21264 version by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Reasonably optimized memcpy() routine for the Alpha 21264
++ *
++ *	- memory accessed as aligned quadwords only
++ *	- uses bcmpge to compare 8 bytes in parallel
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ *
++ * Temp usage notes:
++ *	$1,$2,		- scratch
++ */
++
++	.set noreorder
++	.set noat
++
++	.align	4
++	.globl memcpy
++	.ent memcpy
++memcpy:
++	.frame $30,0,$26,0
++	.prologue 0
++
++	mov	$16, $0			# E : copy dest to return
++	ble	$18, $nomoredata	# U : done with the copy?
++	xor	$16, $17, $1		# E : are source and dest alignments the same?
++	and	$1, 7, $1		# E : are they the same mod 8?
++
++	bne	$1, $misaligned		# U : Nope - gotta do this the slow way
++	/* source and dest are same mod 8 address */
++	and	$16, 7, $1		# E : Are both 0mod8?
++	beq	$1, $both_0mod8		# U : Yes
++	nop				# E :
++
++	/*
++	 * source and dest are same misalignment.  move a byte at a time
++	 * until a 0mod8 alignment for both is reached.
++	 * At least one byte more to move
++	 */
++
++$head_align:
++	ldbu	$1, 0($17)		# L : grab a byte
++	subq	$18, 1, $18		# E : count--
++	addq	$17, 1, $17		# E : src++
++	stb	$1, 0($16)		# L :
++	addq	$16, 1, $16		# E : dest++
++	and	$16, 7, $1		# E : Are we at 0mod8 yet?
++	ble	$18, $nomoredata	# U : done with the copy?
++	bne	$1, $head_align		# U :
++
++$both_0mod8:
++	cmple	$18, 127, $1		# E : Can we unroll the loop?
++	bne	$1, $no_unroll		# U :
++	and	$16, 63, $1		# E : get mod64 alignment
++	beq	$1, $do_unroll		# U : no single quads to fiddle
++
++$single_head_quad:
++	ldq	$1, 0($17)		# L : get 8 bytes
++	subq	$18, 8, $18		# E : count -= 8
++	addq	$17, 8, $17		# E : src += 8
++	nop				# E :
++
++	stq	$1, 0($16)		# L : store
++	addq	$16, 8, $16		# E : dest += 8
++	and	$16, 63, $1		# E : get mod64 alignment
++	bne	$1, $single_head_quad	# U : still not fully aligned
++
++$do_unroll:
++	addq	$16, 64, $7		# E : Initial (+1 trip) wh64 address
++	cmple	$18, 127, $1		# E : Can we go through the unrolled loop?
++	bne	$1, $tail_quads		# U : Nope
++	nop				# E : 
++
++$unroll_body:
++	wh64	($7)			# L1 : memory subsystem hint: 64 bytes at
++					# ($7) are about to be over-written
++	ldq	$6, 0($17)		# L0 : bytes 0..7
++	nop				# E :
++	nop				# E :
++
++	ldq	$4, 8($17)		# L : bytes 8..15
++	ldq	$5, 16($17)		# L : bytes 16..23
++	addq	$7, 64, $7		# E : Update next wh64 address
++	nop				# E :
++
++	ldq	$3, 24($17)		# L : bytes 24..31
++	addq	$16, 64, $1		# E : fallback value for wh64
++	nop				# E :
++	nop				# E :
++
++	addq	$17, 32, $17		# E : src += 32 bytes
++	stq	$6, 0($16)		# L : bytes 0..7
++	nop				# E :
++	nop				# E :
++
++	stq	$4, 8($16)		# L : bytes 8..15
++	stq	$5, 16($16)		# L : bytes 16..23
++	subq	$18, 192, $2		# E : At least two more trips to go?
++	nop				# E :
++
++	stq	$3, 24($16)		# L : bytes 24..31
++	addq	$16, 32, $16		# E : dest += 32 bytes
++	nop				# E :
++	nop				# E :
++
++	ldq	$6, 0($17)		# L : bytes 0..7
++	ldq	$4, 8($17)		# L : bytes 8..15
++	cmovlt	$2, $1, $7		# E : Latency 2, extra map slot - Use
++					# fallback wh64 address if < 2 more trips
++	nop				# E :
++
++	ldq	$5, 16($17)		# L : bytes 16..23
++	ldq	$3, 24($17)		# L : bytes 24..31
++	addq	$16, 32, $16		# E : dest += 32
++	subq	$18, 64, $18		# E : count -= 64
++
++	addq	$17, 32, $17		# E : src += 32
++	stq	$6, -32($16)		# L : bytes 0..7
++	stq	$4, -24($16)		# L : bytes 8..15
++	cmple	$18, 63, $1		# E : At least one more trip?
++
++	stq	$5, -16($16)		# L : bytes 16..23
++	stq	$3, -8($16)		# L : bytes 24..31
++	nop				# E :
++	beq	$1, $unroll_body
++
++$tail_quads:
++$no_unroll:
++	.align 4
++	subq	$18, 8, $18		# E : At least a quad left?
++	blt	$18, $less_than_8	# U : Nope
++	nop				# E :
++	nop				# E :
++
++$move_a_quad:
++	ldq	$1, 0($17)		# L : fetch 8
++	subq	$18, 8, $18		# E : count -= 8
++	addq	$17, 8, $17		# E : src += 8
++	nop				# E :
++
++	stq	$1, 0($16)		# L : store 8
++	addq	$16, 8, $16		# E : dest += 8
++	bge	$18, $move_a_quad	# U :
++	nop				# E :
++
++$less_than_8:
++	.align 4
++	addq	$18, 8, $18		# E : add back for trailing bytes
++	ble	$18, $nomoredata	# U : All-done
++	nop				# E :
++	nop				# E :
++
++	/* Trailing bytes */
++$tail_bytes:
++	subq	$18, 1, $18		# E : count--
++	ldbu	$1, 0($17)		# L : fetch a byte
++	addq	$17, 1, $17		# E : src++
++	nop				# E :
++
++	stb	$1, 0($16)		# L : store a byte
++	addq	$16, 1, $16		# E : dest++
++	bgt	$18, $tail_bytes	# U : more to be done?
++	nop				# E :
++
++	/* branching to exit takes 3 extra cycles, so replicate exit here */
++	ret	$31, ($26), 1		# L0 :
++	nop				# E :
++	nop				# E :
++	nop				# E :
++
++$misaligned:
++	mov	$0, $4			# E : dest temp
++	and	$0, 7, $1		# E : dest alignment mod8
++	beq	$1, $dest_0mod8		# U : life doesnt totally suck
++	nop
++
++$aligndest:
++	ble	$18, $nomoredata	# U :
++	ldbu	$1, 0($17)		# L : fetch a byte
++	subq	$18, 1, $18		# E : count--
++	addq	$17, 1, $17		# E : src++
++
++	stb	$1, 0($4)		# L : store it
++	addq	$4, 1, $4		# E : dest++
++	and	$4, 7, $1		# E : dest 0mod8 yet?
++	bne	$1, $aligndest		# U : go until we are aligned.
++
++	/* Source has unknown alignment, but dest is known to be 0mod8 */
++$dest_0mod8:
++	subq	$18, 8, $18		# E : At least a quad left?
++	blt	$18, $misalign_tail	# U : Nope
++	ldq_u	$3, 0($17)		# L : seed (rotating load) of 8 bytes
++	nop				# E :
++
++$mis_quad:
++	ldq_u	$16, 8($17)		# L : Fetch next 8
++	extql	$3, $17, $3		# U : masking
++	extqh	$16, $17, $1		# U : masking
++	bis	$3, $1, $1		# E : merged bytes to store
++
++	subq	$18, 8, $18		# E : count -= 8
++	addq	$17, 8, $17		# E : src += 8
++	stq	$1, 0($4)		# L : store 8 (aligned)
++	mov	$16, $3			# E : "rotate" source data
++
++	addq	$4, 8, $4		# E : dest += 8
++	bge	$18, $mis_quad		# U : More quads to move
++	nop
++	nop
++
++$misalign_tail:
++	addq	$18, 8, $18		# E : account for tail stuff
++	ble	$18, $nomoredata	# U :
++	nop
++	nop
++
++$misalign_byte:
++	ldbu	$1, 0($17)		# L : fetch 1
++	subq	$18, 1, $18		# E : count--
++	addq	$17, 1, $17		# E : src++
++	nop				# E :
++
++	stb	$1, 0($4)		# L : store
++	addq	$4, 1, $4		# E : dest++
++	bgt	$18, $misalign_byte	# U : more to go?
++	nop
++
++
++$nomoredata:
++	ret	$31, ($26), 1		# L0 :
++	nop				# E :
++	nop				# E :
++	nop				# E :
++
++	.end memcpy
++
++/* For backwards module compatability.  */
++__memcpy = memcpy
++.globl __memcpy
+diff -ruNb linux-22/arch/alpha/lib/ev6-memset.S linux/arch/alpha/lib/ev6-memset.S
+--- linux-22/arch/alpha/lib/ev6-memset.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-memset.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,596 @@
++/*
++ * arch/alpha/lib/ev6-memset.S
++ *
++ * This is an efficient (and relatively small) implementation of the C library
++ * "memset()" function for the 21264 implementation of Alpha.
++ *
++ * 21264 version  contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * The algorithm for the leading and trailing quadwords remains the same,
++ * however the loop has been unrolled to enable better memory throughput,
++ * and the code has been replicated for each of the entry points: __memset
++ * and __memsetw to permit better scheduling to eliminate the stalling
++ * encountered during the mask replication.
++ * A future enhancement might be to put in a byte store loop for really
++ * small (say < 32 bytes) memset()s.  Whether or not that change would be
++ * a win in the kernel would depend upon the contextual usage.
++ * WARNING: Maintaining this is going to be more work than the above version,
++ * as fixes will need to be made in multiple places.  The performance gain
++ * is worth it.
++ */
++
++	.set noat
++	.set noreorder
++.text
++	.globl __memset
++	.globl __memsetw
++	.globl __constant_c_memset
++	.globl memset
++
++	.ent __memset
++.align 5
++__memset:
++memset:
++	.frame $30,0,$26,0
++	.prologue 0
++
++	/*
++	 * Serious stalling happens.  The only way to mitigate this is to
++	 * undertake a major re-write to interleave the constant materialization
++	 * with other parts of the fall-through code.  This is important, even
++	 * though it makes maintenance tougher.
++	 * Do this later.
++	 */
++	and $17,255,$1		# E : 00000000000000ch
++	insbl $17,1,$2		# U : 000000000000ch00
++	bis $16,$16,$0		# E : return value
++	ble $18,end_b		# U : zero length requested?
++
++	addq $18,$16,$6		# E : max address to write to
++	bis	$1,$2,$17	# E : 000000000000chch
++	insbl	$1,2,$3		# U : 0000000000ch0000
++	insbl	$1,3,$4		# U : 00000000ch000000
++
++	or	$3,$4,$3	# E : 00000000chch0000
++	inswl	$17,4,$5	# U : 0000chch00000000
++	xor	$16,$6,$1	# E : will complete write be within one quadword?
++	inswl	$17,6,$2	# U : chch000000000000
++
++	or	$17,$3,$17	# E : 00000000chchchch
++	or	$2,$5,$2	# E : chchchch00000000
++	bic	$1,7,$1		# E : fit within a single quadword?
++	and	$16,7,$3	# E : Target addr misalignment
++
++	or	$17,$2,$17	# E : chchchchchchchch
++	beq	$1,within_quad_b # U :
++	nop			# E :
++	beq	$3,aligned_b	# U : target is 0mod8
++
++	/*
++	 * Target address is misaligned, and won't fit within a quadword
++	 */
++	ldq_u $4,0($16)		# L : Fetch first partial
++	bis $16,$16,$5		# E : Save the address
++	insql $17,$16,$2	# U : Insert new bytes
++	subq $3,8,$3		# E : Invert (for addressing uses)
++
++	addq $18,$3,$18		# E : $18 is new count ($3 is negative)
++	mskql $4,$16,$4		# U : clear relevant parts of the quad
++	subq $16,$3,$16		# E : $16 is new aligned destination
++	bis $2,$4,$1		# E : Final bytes
++
++	nop
++	stq_u $1,0($5)		# L : Store result
++	nop
++	nop
++
++.align 4
++aligned_b:
++	/*
++	 * We are now guaranteed to be quad aligned, with at least
++	 * one partial quad to write.
++	 */
++
++	sra $18,3,$3		# U : Number of remaining quads to write
++	and $18,7,$18		# E : Number of trailing bytes to write
++	bis $16,$16,$5		# E : Save dest address
++	beq $3,no_quad_b	# U : tail stuff only
++
++	/*
++	 * it's worth the effort to unroll this and use wh64 if possible
++	 * Lifted a bunch of code from clear_user.S
++	 * At this point, entry values are:
++	 * $16	Current destination address
++	 * $5	A copy of $16
++	 * $6	The max quadword address to write to
++	 * $18	Number trailer bytes
++	 * $3	Number quads to write
++	 */
++
++	and	$16, 0x3f, $2	# E : Forward work (only useful for unrolled loop)
++	subq	$3, 16, $4	# E : Only try to unroll if > 128 bytes
++	subq	$2, 0x40, $1	# E : bias counter (aligning stuff 0mod64)
++	blt	$4, loop_b	# U :
++
++	/*
++	 * We know we've got at least 16 quads, minimum of one trip
++	 * through unrolled loop.  Do a quad at a time to get us 0mod64
++	 * aligned.
++	 */
++
++	nop			# E :
++	nop			# E :
++	nop			# E :
++	beq	$1, $bigalign_b	# U :
++
++$alignmod64_b:
++	stq	$17, 0($5)	# L :
++	subq	$3, 1, $3	# E : For consistency later
++	addq	$1, 8, $1	# E : Increment towards zero for alignment
++	addq	$5, 8, $4	# E : Initial wh64 address (filler instruction)
++
++	nop
++	nop
++	addq	$5, 8, $5	# E : Inc address
++	blt	$1, $alignmod64_b # U :
++
++$bigalign_b:
++	/*
++	 * $3 - number quads left to go
++	 * $5 - target address (aligned 0mod64)
++	 * $17 - mask of stuff to store
++	 * Scratch registers available: $7, $2, $4, $1
++	 * we know that we'll be taking a minimum of one trip through
++ 	 * CWG Section 3.7.6: do not expect a sustained store rate of > 1/cycle
++	 * Assumes the wh64 needs to be for 2 trips through the loop in the future
++	 * The wh64 is issued on for the starting destination address for trip +2
++	 * through the loop, and if there are less than two trips left, the target
++	 * address will be for the current trip.
++	 */
++
++$do_wh64_b:
++	wh64	($4)		# L1 : memory subsystem write hint
++	subq	$3, 24, $2	# E : For determining future wh64 addresses
++	stq	$17, 0($5)	# L :
++	nop			# E :
++
++	addq	$5, 128, $4	# E : speculative target of next wh64
++	stq	$17, 8($5)	# L :
++	stq	$17, 16($5)	# L :
++	addq	$5, 64, $7	# E : Fallback address for wh64 (== next trip addr)
++
++	stq	$17, 24($5)	# L :
++	stq	$17, 32($5)	# L :
++	cmovlt	$2, $7, $4	# E : Latency 2, extra mapping cycle
++	nop
++
++	stq	$17, 40($5)	# L :
++	stq	$17, 48($5)	# L :
++	subq	$3, 16, $2	# E : Repeat the loop at least once more?
++	nop
++
++	stq	$17, 56($5)	# L :
++	addq	$5, 64, $5	# E :
++	subq	$3, 8, $3	# E :
++	bge	$2, $do_wh64_b	# U :
++
++	nop
++	nop
++	nop
++	beq	$3, no_quad_b	# U : Might have finished already
++
++.align 4
++	/*
++	 * Simple loop for trailing quadwords, or for small amounts
++	 * of data (where we can't use an unrolled loop and wh64)
++	 */
++loop_b:
++	stq $17,0($5)		# L :
++	subq $3,1,$3		# E : Decrement number quads left
++	addq $5,8,$5		# E : Inc address
++	bne $3,loop_b		# U : more?
++
++no_quad_b:
++	/*
++	 * Write 0..7 trailing bytes.
++	 */
++	nop			# E :
++	beq $18,end_b		# U : All done?
++	ldq $7,0($5)		# L :
++	mskqh $7,$6,$2		# U : Mask final quad
++
++	insqh $17,$6,$4		# U : New bits
++	bis $2,$4,$1		# E : Put it all together
++	stq $1,0($5)		# L : And back to memory
++	ret $31,($26),1		# L0 :
++
++within_quad_b:
++	ldq_u $1,0($16)		# L :
++	insql $17,$16,$2	# U : New bits
++	mskql $1,$16,$4		# U : Clear old
++	bis $2,$4,$2		# E : New result
++
++	mskql $2,$6,$4		# U :
++	mskqh $1,$6,$2		# U :
++	bis $2,$4,$1		# E :
++	stq_u $1,0($16)		# L :
++
++end_b:
++	nop
++	nop
++	nop
++	ret $31,($26),1		# L0 :
++	.end __memset
++
++	/*
++	 * This is the original body of code, prior to replication and
++	 * rescheduling.  Leave it here, as there may be calls to this
++	 * entry point.
++	 */
++.align 4
++	.ent __memset
++__constant_c_memset:
++	.frame $30,0,$26,0
++	.prologue 0
++
++	addq $18,$16,$6		# E : max address to write to
++	bis $16,$16,$0		# E : return value
++	xor $16,$6,$1		# E : will complete write be within one quadword?
++	ble $18,end		# U : zero length requested?
++
++	bic $1,7,$1		# E : fit within a single quadword
++	beq $1,within_one_quad	# U :
++	and $16,7,$3		# E : Target addr misalignment
++	beq $3,aligned		# U : target is 0mod8
++
++	/*
++	 * Target address is misaligned, and won't fit within a quadword
++	 */
++	ldq_u $4,0($16)		# L : Fetch first partial
++	bis $16,$16,$5		# E : Save the address
++	insql $17,$16,$2	# U : Insert new bytes
++	subq $3,8,$3		# E : Invert (for addressing uses)
++
++	addq $18,$3,$18		# E : $18 is new count ($3 is negative)
++	mskql $4,$16,$4		# U : clear relevant parts of the quad
++	subq $16,$3,$16		# E : $16 is new aligned destination
++	bis $2,$4,$1		# E : Final bytes
++
++	nop
++	stq_u $1,0($5)		# L : Store result
++	nop
++	nop
++
++.align 4
++aligned:
++	/*
++	 * We are now guaranteed to be quad aligned, with at least
++	 * one partial quad to write.
++	 */
++
++	sra $18,3,$3		# U : Number of remaining quads to write
++	and $18,7,$18		# E : Number of trailing bytes to write
++	bis $16,$16,$5		# E : Save dest address
++	beq $3,no_quad		# U : tail stuff only
++
++	/*
++	 * it's worth the effort to unroll this and use wh64 if possible
++	 * Lifted a bunch of code from clear_user.S
++	 * At this point, entry values are:
++	 * $16	Current destination address
++	 * $5	A copy of $16
++	 * $6	The max quadword address to write to
++	 * $18	Number trailer bytes
++	 * $3	Number quads to write
++	 */
++
++	and	$16, 0x3f, $2	# E : Forward work (only useful for unrolled loop)
++	subq	$3, 16, $4	# E : Only try to unroll if > 128 bytes
++	subq	$2, 0x40, $1	# E : bias counter (aligning stuff 0mod64)
++	blt	$4, loop	# U :
++
++	/*
++	 * We know we've got at least 16 quads, minimum of one trip
++	 * through unrolled loop.  Do a quad at a time to get us 0mod64
++	 * aligned.
++	 */
++
++	nop			# E :
++	nop			# E :
++	nop			# E :
++	beq	$1, $bigalign	# U :
++
++$alignmod64:
++	stq	$17, 0($5)	# L :
++	subq	$3, 1, $3	# E : For consistency later
++	addq	$1, 8, $1	# E : Increment towards zero for alignment
++	addq	$5, 8, $4	# E : Initial wh64 address (filler instruction)
++
++	nop
++	nop
++	addq	$5, 8, $5	# E : Inc address
++	blt	$1, $alignmod64	# U :
++
++$bigalign:
++	/*
++	 * $3 - number quads left to go
++	 * $5 - target address (aligned 0mod64)
++	 * $17 - mask of stuff to store
++	 * Scratch registers available: $7, $2, $4, $1
++	 * we know that we'll be taking a minimum of one trip through
++ 	 * CWG Section 3.7.6: do not expect a sustained store rate of > 1/cycle
++	 * Assumes the wh64 needs to be for 2 trips through the loop in the future
++	 * The wh64 is issued on for the starting destination address for trip +2
++	 * through the loop, and if there are less than two trips left, the target
++	 * address will be for the current trip.
++	 */
++
++$do_wh64:
++	wh64	($4)		# L1 : memory subsystem write hint
++	subq	$3, 24, $2	# E : For determining future wh64 addresses
++	stq	$17, 0($5)	# L :
++	nop			# E :
++
++	addq	$5, 128, $4	# E : speculative target of next wh64
++	stq	$17, 8($5)	# L :
++	stq	$17, 16($5)	# L :
++	addq	$5, 64, $7	# E : Fallback address for wh64 (== next trip addr)
++
++	stq	$17, 24($5)	# L :
++	stq	$17, 32($5)	# L :
++	cmovlt	$2, $7, $4	# E : Latency 2, extra mapping cycle
++	nop
++
++	stq	$17, 40($5)	# L :
++	stq	$17, 48($5)	# L :
++	subq	$3, 16, $2	# E : Repeat the loop at least once more?
++	nop
++
++	stq	$17, 56($5)	# L :
++	addq	$5, 64, $5	# E :
++	subq	$3, 8, $3	# E :
++	bge	$2, $do_wh64	# U :
++
++	nop
++	nop
++	nop
++	beq	$3, no_quad	# U : Might have finished already
++
++.align 4
++	/*
++	 * Simple loop for trailing quadwords, or for small amounts
++	 * of data (where we can't use an unrolled loop and wh64)
++	 */
++loop:
++	stq $17,0($5)		# L :
++	subq $3,1,$3		# E : Decrement number quads left
++	addq $5,8,$5		# E : Inc address
++	bne $3,loop		# U : more?
++
++no_quad:
++	/*
++	 * Write 0..7 trailing bytes.
++	 */
++	nop			# E :
++	beq $18,end		# U : All done?
++	ldq $7,0($5)		# L :
++	mskqh $7,$6,$2		# U : Mask final quad
++
++	insqh $17,$6,$4		# U : New bits
++	bis $2,$4,$1		# E : Put it all together
++	stq $1,0($5)		# L : And back to memory
++	ret $31,($26),1		# L0 :
++
++within_one_quad:
++	ldq_u $1,0($16)		# L :
++	insql $17,$16,$2	# U : New bits
++	mskql $1,$16,$4		# U : Clear old
++	bis $2,$4,$2		# E : New result
++
++	mskql $2,$6,$4		# U :
++	mskqh $1,$6,$2		# U :
++	bis $2,$4,$1		# E :
++	stq_u $1,0($16)		# L :
++
++end:
++	nop
++	nop
++	nop
++	ret $31,($26),1		# L0 :
++	.end __constant_c_memset
++
++	/*
++	 * This is a replicant of the __constant_c_memset code, rescheduled
++	 * to mask stalls.  Note that entry point names also had to change
++	 */
++	.align 5
++	.ent __memsetw
++
++__memsetw:
++	.frame $30,0,$26,0
++	.prologue 0
++
++	inswl $17,0,$5		# U : 000000000000c1c2
++	inswl $17,2,$2		# U : 00000000c1c20000
++	bis $16,$16,$0		# E : return value
++	addq	$18,$16,$6	# E : max address to write to
++
++	ble $18, end_w		# U : zero length requested?
++	inswl	$17,4,$3	# U : 0000c1c200000000
++	inswl	$17,6,$4	# U : c1c2000000000000
++	xor	$16,$6,$1	# E : will complete write be within one quadword?
++
++	or	$2,$5,$2	# E : 00000000c1c2c1c2
++	or	$3,$4,$17	# E : c1c2c1c200000000
++	bic	$1,7,$1		# E : fit within a single quadword
++	and	$16,7,$3	# E : Target addr misalignment
++
++	or	$17,$2,$17	# E : c1c2c1c2c1c2c1c2
++	beq $1,within_quad_w	# U :
++	nop
++	beq $3,aligned_w	# U : target is 0mod8
++
++	/*
++	 * Target address is misaligned, and won't fit within a quadword
++	 */
++	ldq_u $4,0($16)		# L : Fetch first partial
++	bis $16,$16,$5		# E : Save the address
++	insql $17,$16,$2	# U : Insert new bytes
++	subq $3,8,$3		# E : Invert (for addressing uses)
++
++	addq $18,$3,$18		# E : $18 is new count ($3 is negative)
++	mskql $4,$16,$4		# U : clear relevant parts of the quad
++	subq $16,$3,$16		# E : $16 is new aligned destination
++	bis $2,$4,$1		# E : Final bytes
++
++	nop
++	stq_u $1,0($5)		# L : Store result
++	nop
++	nop
++
++.align 4
++aligned_w:
++	/*
++	 * We are now guaranteed to be quad aligned, with at least
++	 * one partial quad to write.
++	 */
++
++	sra $18,3,$3		# U : Number of remaining quads to write
++	and $18,7,$18		# E : Number of trailing bytes to write
++	bis $16,$16,$5		# E : Save dest address
++	beq $3,no_quad_w	# U : tail stuff only
++
++	/*
++	 * it's worth the effort to unroll this and use wh64 if possible
++	 * Lifted a bunch of code from clear_user.S
++	 * At this point, entry values are:
++	 * $16	Current destination address
++	 * $5	A copy of $16
++	 * $6	The max quadword address to write to
++	 * $18	Number trailer bytes
++	 * $3	Number quads to write
++	 */
++
++	and	$16, 0x3f, $2	# E : Forward work (only useful for unrolled loop)
++	subq	$3, 16, $4	# E : Only try to unroll if > 128 bytes
++	subq	$2, 0x40, $1	# E : bias counter (aligning stuff 0mod64)
++	blt	$4, loop_w	# U :
++
++	/*
++	 * We know we've got at least 16 quads, minimum of one trip
++	 * through unrolled loop.  Do a quad at a time to get us 0mod64
++	 * aligned.
++	 */
++
++	nop			# E :
++	nop			# E :
++	nop			# E :
++	beq	$1, $bigalign_w	# U :
++
++$alignmod64_w:
++	stq	$17, 0($5)	# L :
++	subq	$3, 1, $3	# E : For consistency later
++	addq	$1, 8, $1	# E : Increment towards zero for alignment
++	addq	$5, 8, $4	# E : Initial wh64 address (filler instruction)
++
++	nop
++	nop
++	addq	$5, 8, $5	# E : Inc address
++	blt	$1, $alignmod64_w	# U :
++
++$bigalign_w:
++	/*
++	 * $3 - number quads left to go
++	 * $5 - target address (aligned 0mod64)
++	 * $17 - mask of stuff to store
++	 * Scratch registers available: $7, $2, $4, $1
++	 * we know that we'll be taking a minimum of one trip through
++ 	 * CWG Section 3.7.6: do not expect a sustained store rate of > 1/cycle
++	 * Assumes the wh64 needs to be for 2 trips through the loop in the future
++	 * The wh64 is issued on for the starting destination address for trip +2
++	 * through the loop, and if there are less than two trips left, the target
++	 * address will be for the current trip.
++	 */
++
++$do_wh64_w:
++	wh64	($4)		# L1 : memory subsystem write hint
++	subq	$3, 24, $2	# E : For determining future wh64 addresses
++	stq	$17, 0($5)	# L :
++	nop			# E :
++
++	addq	$5, 128, $4	# E : speculative target of next wh64
++	stq	$17, 8($5)	# L :
++	stq	$17, 16($5)	# L :
++	addq	$5, 64, $7	# E : Fallback address for wh64 (== next trip addr)
++
++	stq	$17, 24($5)	# L :
++	stq	$17, 32($5)	# L :
++	cmovlt	$2, $7, $4	# E : Latency 2, extra mapping cycle
++	nop
++
++	stq	$17, 40($5)	# L :
++	stq	$17, 48($5)	# L :
++	subq	$3, 16, $2	# E : Repeat the loop at least once more?
++	nop
++
++	stq	$17, 56($5)	# L :
++	addq	$5, 64, $5	# E :
++	subq	$3, 8, $3	# E :
++	bge	$2, $do_wh64_w	# U :
++
++	nop
++	nop
++	nop
++	beq	$3, no_quad_w	# U : Might have finished already
++
++.align 4
++	/*
++	 * Simple loop for trailing quadwords, or for small amounts
++	 * of data (where we can't use an unrolled loop and wh64)
++	 */
++loop_w:
++	stq $17,0($5)		# L :
++	subq $3,1,$3		# E : Decrement number quads left
++	addq $5,8,$5		# E : Inc address
++	bne $3,loop_w		# U : more?
++
++no_quad_w:
++	/*
++	 * Write 0..7 trailing bytes.
++	 */
++	nop			# E :
++	beq $18,end_w		# U : All done?
++	ldq $7,0($5)		# L :
++	mskqh $7,$6,$2		# U : Mask final quad
++
++	insqh $17,$6,$4		# U : New bits
++	bis $2,$4,$1		# E : Put it all together
++	stq $1,0($5)		# L : And back to memory
++	ret $31,($26),1		# L0 :
++
++within_quad_w:
++	ldq_u $1,0($16)		# L :
++	insql $17,$16,$2	# U : New bits
++	mskql $1,$16,$4		# U : Clear old
++	bis $2,$4,$2		# E : New result
++
++	mskql $2,$6,$4		# U :
++	mskqh $1,$6,$2		# U :
++	bis $2,$4,$1		# E :
++	stq_u $1,0($16)		# L :
++
++end_w:
++	nop
++	nop
++	nop
++	ret $31,($26),1		# L0 :
++
++	.end __memsetw
+diff -ruNb linux-22/arch/alpha/lib/ev6-strncpy_from_user.S linux/arch/alpha/lib/ev6-strncpy_from_user.S
+--- linux-22/arch/alpha/lib/ev6-strncpy_from_user.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-strncpy_from_user.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,425 @@
++/*
++ * arch/alpha/lib/ev6-strncpy_from_user.S
++ * 21264 version contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Just like strncpy except in the return value:
++ *
++ * -EFAULT       if an exception occurs before the terminator is copied.
++ * N             if the buffer filled.
++ *
++ * Otherwise the length of the string is returned.
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * A bunch of instructions got moved and temp registers were changed
++ * to aid in scheduling.  Control flow was also re-arranged to eliminate
++ * branches, and to provide longer code sequences to enable better scheduling.
++ * A total rewrite (using byte load/stores for start & tail sequences)
++ * is desirable, but very difficult to do without a from-scratch rewrite.
++ * Save that for the future.
++ */
++
++
++#include <asm/errno.h>
++#include <alpha/regdef.h>
++
++
++/* Allow an exception for an insn; exit if we get one.  */
++#define EX(x,y...)			\
++	99: x,##y;			\
++	.section __ex_table,"a";	\
++	.gprel32 99b;			\
++	lda $31, $exception-99b($0); 	\
++	.previous
++
++
++	.set noat
++	.set noreorder
++	.text
++
++	.globl __strncpy_from_user
++	.ent __strncpy_from_user
++	.frame $30, 0, $26
++	.prologue 1
++
++	.align 4
++__strncpy_from_user:
++	ldgp	$29, 0($27)	# E E : becomes 2 instructions (for exceptions)
++	and	a0, 7, t3	# E : find dest misalignment
++	beq	a2, $zerolength	# U :
++
++	/* Are source and destination co-aligned?  */
++	mov	a0, v0		# E : save the string start
++	xor	a0, a1, t4	# E :
++	EX( ldq_u t1, 0(a1) )	# L : Latency=3 load first quadword
++	ldq_u	t0, 0(a0)	# L : load first (partial) aligned dest quadword
++
++	addq	a2, t3, a2	# E : bias count by dest misalignment
++	subq	a2, 1, a3	# E :
++	addq	zero, 1, t10	# E :
++	and	t4, 7, t4	# E : misalignment between the two
++
++	and	a3, 7, t6	# E : number of tail bytes
++	sll	t10, t6, t10	# E : t10 = bitmask of last count byte
++	bne	t4, $unaligned	# U :
++	lda	t2, -1		# E : build a mask against false zero
++
++	/*
++	 * We are co-aligned; take care of a partial first word.
++	 * On entry to this basic block:
++	 * t0 == the first destination word for masking back in
++	 * t1 == the first source word.
++	 */
++
++	srl	a3, 3, a2	# E : a2 = loop counter = (count - 1)/8
++	addq	a1, 8, a1	# E :
++	mskqh	t2, a1, t2	# U :   detection in the src word
++	nop
++
++	/* Create the 1st output word and detect 0's in the 1st input word.  */
++	mskqh	t1, a1, t3	# U :
++	mskql	t0, a1, t0	# U : assemble the first output word
++	ornot	t1, t2, t2	# E :
++	nop
++
++	cmpbge	zero, t2, t8	# E : bits set iff null found
++	or	t0, t3, t0	# E :
++	beq	a2, $a_eoc	# U :
++	bne	t8, $a_eos	# U : 2nd branch in a quad.  Bad.
++
++	/* On entry to this basic block:
++	 * t0 == a source quad not containing a null.
++	 * a0 - current aligned destination address
++	 * a1 - current aligned source address
++	 * a2 - count of quadwords to move.
++	 * NOTE: Loop improvement - unrolling this is going to be
++	 *	a huge win, since we're going to stall otherwise.
++	 *	Fix this later.  For _really_ large copies, look
++	 *	at using wh64 on a look-ahead basis.  See the code
++	 *	in clear_user.S and copy_user.S.
++	 * Presumably, since (a0) and (a1) do not overlap (by C definition)
++	 * Lots of nops here:
++	 *	- Separate loads from stores
++	 *	- Keep it to 1 branch/quadpack so the branch predictor
++	 *	  can train.
++	 */
++$a_loop:
++	stq_u	t0, 0(a0)	# L :
++	addq	a0, 8, a0	# E :
++	nop
++	subq	a2, 1, a2	# E :
++
++	EX( ldq_u t0, 0(a1) )	# L :
++	addq	a1, 8, a1	# E :
++	cmpbge	zero, t0, t8	# E : Stall 2 cycles on t0
++	beq	a2, $a_eoc      # U :
++
++	beq	t8, $a_loop	# U :
++	nop
++	nop
++	nop
++
++	/* Take care of the final (partial) word store.  At this point
++	 * the end-of-count bit is set in t8 iff it applies.
++	 *
++	 * On entry to this basic block we have:
++	 * t0 == the source word containing the null
++	 * t8 == the cmpbge mask that found it.
++	 */
++$a_eos:
++	negq	t8, t12		# E : find low bit set
++	and	t8, t12, t12	# E : 
++
++	/* We're doing a partial word store and so need to combine
++	   our source and original destination words.  */
++	ldq_u	t1, 0(a0)	# L :
++	subq	t12, 1, t6	# E :
++
++	or	t12, t6, t8	# E :
++	zapnot	t0, t8, t0	# U : clear src bytes > null
++	zap	t1, t8, t1	# U : clear dst bytes <= null
++	or	t0, t1, t0	# E :
++
++	stq_u	t0, 0(a0)	# L :
++	br	$finish_up	# L0 :
++	nop
++	nop
++
++	/* Add the end-of-count bit to the eos detection bitmask.  */
++	.align 4
++$a_eoc:
++	or	t10, t8, t8
++	br	$a_eos
++	nop
++	nop
++
++
++/* The source and destination are not co-aligned.  Align the destination
++   and cope.  We have to be very careful about not reading too much and
++   causing a SEGV.  */
++
++	.align 4
++$u_head:
++	/* We know just enough now to be able to assemble the first
++	   full source word.  We can still find a zero at the end of it
++	   that prevents us from outputting the whole thing.
++
++	   On entry to this basic block:
++	   t0 == the first dest word, unmasked
++	   t1 == the shifted low bits of the first source word
++	   t6 == bytemask that is -1 in dest word bytes */
++
++	EX( ldq_u t2, 8(a1) )	# L : load second src word
++	addq	a1, 8, a1	# E :
++	mskql	t0, a0, t0	# U : mask trailing garbage in dst
++	extqh	t2, a1, t4	# U :
++
++	or	t1, t4, t1	# E : first aligned src word complete
++	mskqh	t1, a0, t1	# U : mask leading garbage in src
++	or	t0, t1, t0	# E : first output word complete
++	or	t0, t6, t6	# E : mask original data for zero test
++
++	cmpbge	zero, t6, t8	# E :
++	beq	a2, $u_eocfin	# U :
++	bne	t8, $u_final	# U : bad news - 2nd branch in a quad
++	lda	t6, -1		# E : mask out the bits we have
++
++	mskql	t6, a1, t6	# U :   already seen
++	stq_u	t0, 0(a0)	# L : store first output word
++	or      t6, t2, t2	# E :
++	cmpbge	zero, t2, t8	# E : find nulls in second partial
++
++	addq	a0, 8, a0		# E :
++	subq	a2, 1, a2		# E :
++	bne	t8, $u_late_head_exit	# U :
++	nop
++
++	/* Finally, we've got all the stupid leading edge cases taken care
++	   of and we can set up to enter the main loop.  */
++
++	extql	t2, a1, t1	# U : position hi-bits of lo word
++	EX( ldq_u t2, 8(a1) )	# L : read next high-order source word
++	addq	a1, 8, a1	# E :
++	cmpbge	zero, t2, t8	# E :
++
++	beq	a2, $u_eoc	# U :
++	bne	t8, $u_eos	# U :
++	nop
++	nop
++
++	/* Unaligned copy main loop.  In order to avoid reading too much,
++	   the loop is structured to detect zeros in aligned source words.
++	   This has, unfortunately, effectively pulled half of a loop
++	   iteration out into the head and half into the tail, but it does
++	   prevent nastiness from accumulating in the very thing we want
++	   to run as fast as possible.
++
++	   On entry to this basic block:
++	   t1 == the shifted high-order bits from the previous source word
++	   t2 == the unshifted current source word
++
++	   We further know that t2 does not contain a null terminator.  */
++
++	/*
++	 * Extra nops here:
++	 *	separate load quads from store quads
++	 *	only one branch/quad to permit predictor training
++	 */
++
++	.align 4
++$u_loop:
++	extqh	t2, a1, t0	# U : extract high bits for current word
++	addq	a1, 8, a1	# E :
++	extql	t2, a1, t3	# U : extract low bits for next time
++	addq	a0, 8, a0	# E :
++
++	or	t0, t1, t0	# E : current dst word now complete
++	EX( ldq_u t2, 0(a1) )	# L : load high word for next time
++	subq	a2, 1, a2	# E :
++	nop
++
++	stq_u	t0, -8(a0)	# L : save the current word
++	mov	t3, t1		# E :
++	cmpbge	zero, t2, t8	# E : test new word for eos
++	beq	a2, $u_eoc	# U :
++
++	beq	t8, $u_loop	# U :
++	nop
++	nop
++	nop
++
++	/* We've found a zero somewhere in the source word we just read.
++	   If it resides in the lower half, we have one (probably partial)
++	   word to write out, and if it resides in the upper half, we
++	   have one full and one partial word left to write out.
++
++	   On entry to this basic block:
++	   t1 == the shifted high-order bits from the previous source word
++	   t2 == the unshifted current source word.  */
++	.align 4
++$u_eos:
++	extqh	t2, a1, t0	# U :
++	or	t0, t1, t0	# E : first (partial) source word complete
++	cmpbge	zero, t0, t8	# E : is the null in this first bit?
++	nop
++
++	bne	t8, $u_final	# U :
++	stq_u	t0, 0(a0)	# L : the null was in the high-order bits
++	addq	a0, 8, a0	# E :
++	subq	a2, 1, a2	# E :
++
++	.align 4
++$u_late_head_exit:
++	extql	t2, a1, t0	# U :
++	cmpbge	zero, t0, t8	# E :
++	or	t8, t10, t6	# E :
++	cmoveq	a2, t6, t8	# E :
++
++	/* Take care of a final (probably partial) result word.
++	   On entry to this basic block:
++	   t0 == assembled source word
++	   t8 == cmpbge mask that found the null.  */
++	.align 4
++$u_final:
++	negq	t8, t6		# E : isolate low bit set
++	and	t6, t8, t12	# E :
++	ldq_u	t1, 0(a0)	# L :
++	subq	t12, 1, t6	# E :
++
++	or	t6, t12, t8	# E :
++	zapnot	t0, t8, t0	# U : kill source bytes > null
++	zap	t1, t8, t1	# U : kill dest bytes <= null
++	or	t0, t1, t0	# E :
++
++	stq_u	t0, 0(a0)	# E :
++	br	$finish_up	# U :
++	nop
++	nop
++
++	.align 4
++$u_eoc:				# end-of-count
++	extqh	t2, a1, t0	# U :
++	or	t0, t1, t0	# E :
++	cmpbge	zero, t0, t8	# E :
++	nop
++
++	.align 4
++$u_eocfin:			# end-of-count, final word
++	or	t10, t8, t8	# E :
++	br	$u_final	# U :
++	nop
++	nop
++
++	/* Unaligned copy entry point.  */
++	.align 4
++$unaligned:
++
++	srl	a3, 3, a2	# U : a2 = loop counter = (count - 1)/8
++	and	a0, 7, t4	# E : find dest misalignment
++	and	a1, 7, t5	# E : find src misalignment
++	mov	zero, t0	# E :
++
++	/* Conditionally load the first destination word and a bytemask
++	   with 0xff indicating that the destination byte is sacrosanct.  */
++
++	mov	zero, t6	# E :
++	beq	t4, 1f		# U :
++	ldq_u	t0, 0(a0)	# L :
++	lda	t6, -1		# E :
++
++	mskql	t6, a0, t6	# E :
++	nop
++	nop
++	nop
++
++	.align 4
++1:
++	subq	a1, t4, a1	# E : sub dest misalignment from src addr
++	/* If source misalignment is larger than dest misalignment, we need
++	   extra startup checks to avoid SEGV.  */
++	cmplt	t4, t5, t12	# E :
++	extql	t1, a1, t1	# U : shift src into place
++	lda	t2, -1		# E : for creating masks later
++
++	beq	t12, $u_head	# U :
++	mskqh	t2, t5, t2	# U : begin src byte validity mask
++	cmpbge	zero, t1, t8	# E : is there a zero?
++	nop
++
++	extql	t2, a1, t2	# U :
++	or	t8, t10, t5	# E : test for end-of-count too
++	cmpbge	zero, t2, t3	# E :
++	cmoveq	a2, t5, t8	# E : Latency=2, extra map slot
++
++	nop			# E : goes with cmov
++	andnot	t8, t3, t8	# E :
++	beq	t8, $u_head	# U :
++	nop
++
++	/* At this point we've found a zero in the first partial word of
++	   the source.  We need to isolate the valid source data and mask
++	   it into the original destination data.  (Incidentally, we know
++	   that we'll need at least one byte of that original dest word.) */
++
++	ldq_u	t0, 0(a0)	# L :
++	negq	t8, t6		# E : build bitmask of bytes <= zero
++	mskqh	t1, t4, t1	# U :
++	and	t6, t8, t12	# E :
++
++	subq	t12, 1, t6	# E :
++	or	t6, t12, t8	# E :
++	zapnot	t2, t8, t2	# U : prepare source word; mirror changes
++	zapnot	t1, t8, t1	# U : to source validity mask
++
++	andnot	t0, t2, t0	# E : zero place for source to reside
++	or	t0, t1, t0	# E : and put it there
++	stq_u	t0, 0(a0)	# L :
++	nop
++
++	.align 4
++$finish_up:
++	zapnot	t0, t12, t4	# U : was last byte written null?
++	and	t12, 0xf0, t3	# E : binary search for the address of the
++	cmovne	t4, 1, t4	# E : Latency=2, extra map slot
++	nop			# E : with cmovne
++
++	and	t12, 0xcc, t2	# E : last byte written
++	and	t12, 0xaa, t1	# E :
++	cmovne	t3, 4, t3	# E : Latency=2, extra map slot
++	nop			# E : with cmovne
++
++	bic	a0, 7, t0
++	cmovne	t2, 2, t2	# E : Latency=2, extra map slot
++	nop			# E : with cmovne
++	nop
++
++	cmovne	t1, 1, t1	# E : Latency=2, extra map slot
++	nop			# E : with cmovne
++	addq	t0, t3, t0	# E :
++	addq	t1, t2, t1	# E :
++
++	addq	t0, t1, t0	# E :
++	addq	t0, t4, t0	# add one if we filled the buffer
++	subq	t0, v0, v0	# find string length
++	ret			# L0 :
++
++	.align 4
++$zerolength:
++	nop
++	nop
++	nop
++	clr	v0
++
++$exception:
++	nop
++	nop
++	nop
++	ret
++
++	.end __strncpy_from_user
+diff -ruNb linux-22/arch/alpha/lib/ev6-stxcpy.S linux/arch/alpha/lib/ev6-stxcpy.S
+--- linux-22/arch/alpha/lib/ev6-stxcpy.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-stxcpy.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,321 @@
++/*
++ * arch/alpha/lib/ev6-stxcpy.S
++ * 21264 version contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Copy a null-terminated string from SRC to DST.
++ *
++ * This is an internal routine used by strcpy, stpcpy, and strcat.
++ * As such, it uses special linkage conventions to make implementation
++ * of these public functions more efficient.
++ *
++ * On input:
++ *	t9 = return address
++ *	a0 = DST
++ *	a1 = SRC
++ *
++ * On output:
++ *	t12 = bitmask (with one bit set) indicating the last byte written
++ *	a0  = unaligned address of the last *word* written
++ *
++ * Furthermore, v0, a3-a5, t11, and t12 are untouched.
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ */
++
++#include <alpha/regdef.h>
++
++	.set noat
++	.set noreorder
++
++	.text
++
++/* There is a problem with either gdb (as of 4.16) or gas (as of 2.7) that
++   doesn't like putting the entry point for a procedure somewhere in the
++   middle of the procedure descriptor.  Work around this by putting the
++   aligned copy in its own procedure descriptor */
++
++
++	.ent stxcpy_aligned
++	.align 4
++stxcpy_aligned:
++	.frame sp, 0, t9
++	.prologue 0
++
++	/* On entry to this basic block:
++	   t0 == the first destination word for masking back in
++	   t1 == the first source word.  */
++
++	/* Create the 1st output word and detect 0's in the 1st input word.  */
++	lda	t2, -1		# E : build a mask against false zero
++	mskqh	t2, a1, t2	# U :   detection in the src word (stall)
++	mskqh	t1, a1, t3	# U :
++	ornot	t1, t2, t2	# E : (stall)
++
++	mskql	t0, a1, t0	# U : assemble the first output word
++	cmpbge	zero, t2, t8	# E : bits set iff null found
++	or	t0, t3, t1	# E : (stall)
++	bne	t8, $a_eos	# U : (stall)
++
++	/* On entry to this basic block:
++	   t0 == the first destination word for masking back in
++	   t1 == a source word not containing a null.  */
++	/* Nops here to separate store quads from load quads */
++
++$a_loop:
++	stq_u	t1, 0(a0)	# L :
++	addq	a0, 8, a0	# E :
++	nop
++	nop
++
++	ldq_u	t1, 0(a1)	# L : Latency=3
++	addq	a1, 8, a1	# E :
++	cmpbge	zero, t1, t8	# E : (3 cycle stall)
++	beq	t8, $a_loop	# U : (stall for t8)
++
++	/* Take care of the final (partial) word store.
++	   On entry to this basic block we have:
++	   t1 == the source word containing the null
++	   t8 == the cmpbge mask that found it.  */
++$a_eos:
++	negq	t8, t6		# E : find low bit set
++	and	t8, t6, t12	# E : (stall)
++	/* For the sake of the cache, don't read a destination word
++	   if we're not going to need it.  */
++	and	t12, 0x80, t6	# E : (stall)
++	bne	t6, 1f		# U : (stall)
++
++	/* We're doing a partial word store and so need to combine
++	   our source and original destination words.  */
++	ldq_u	t0, 0(a0)	# L : Latency=3
++	subq	t12, 1, t6	# E :
++	zapnot	t1, t6, t1	# U : clear src bytes >= null (stall)
++	or	t12, t6, t8	# E : (stall)
++
++	zap	t0, t8, t0	# E : clear dst bytes <= null
++	or	t0, t1, t1	# E : (stall)
++	nop
++	nop
++
++1:	stq_u	t1, 0(a0)	# L :
++	ret	(t9)		# L0 : Latency=3
++	nop
++	nop
++
++	.end stxcpy_aligned
++
++	.align 4
++	.ent __stxcpy
++	.globl __stxcpy
++__stxcpy:
++	.frame sp, 0, t9
++	.prologue 0
++
++	/* Are source and destination co-aligned?  */
++	xor	a0, a1, t0	# E :
++	unop			# E :
++	and	t0, 7, t0	# E : (stall)
++	bne	t0, $unaligned	# U : (stall)
++
++	/* We are co-aligned; take care of a partial first word.  */
++	ldq_u	t1, 0(a1)		# L : load first src word
++	and	a0, 7, t0		# E : take care not to load a word ...
++	addq	a1, 8, a1		# E :
++	beq	t0, stxcpy_aligned	# U : ... if we wont need it (stall)
++
++	ldq_u	t0, 0(a0)	# L :
++	br	stxcpy_aligned	# L0 : Latency=3
++	nop
++	nop
++
++
++/* The source and destination are not co-aligned.  Align the destination
++   and cope.  We have to be very careful about not reading too much and
++   causing a SEGV.  */
++
++	.align 4
++$u_head:
++	/* We know just enough now to be able to assemble the first
++	   full source word.  We can still find a zero at the end of it
++	   that prevents us from outputting the whole thing.
++
++	   On entry to this basic block:
++	   t0 == the first dest word, for masking back in, if needed else 0
++	   t1 == the low bits of the first source word
++	   t6 == bytemask that is -1 in dest word bytes */
++
++	ldq_u	t2, 8(a1)	# L :
++	addq	a1, 8, a1	# E :
++	extql	t1, a1, t1	# U : (stall on a1)
++	extqh	t2, a1, t4	# U : (stall on a1)
++
++	mskql	t0, a0, t0	# U :
++	or	t1, t4, t1	# E :
++	mskqh	t1, a0, t1	# U : (stall on t1)
++	or	t0, t1, t1	# E : (stall on t1)
++
++	or	t1, t6, t6	# E :
++	cmpbge	zero, t6, t8	# E : (stall)
++	lda	t6, -1		# E : for masking just below
++	bne	t8, $u_final	# U : (stall)
++
++	mskql	t6, a1, t6		# U : mask out the bits we have
++	or	t6, t2, t2		# E :   already extracted before (stall)
++	cmpbge	zero, t2, t8		# E :   testing eos (stall)
++	bne	t8, $u_late_head_exit	# U : (stall)
++
++	/* Finally, we've got all the stupid leading edge cases taken care
++	   of and we can set up to enter the main loop.  */
++
++	stq_u	t1, 0(a0)	# L : store first output word
++	addq	a0, 8, a0	# E :
++	extql	t2, a1, t0	# U : position ho-bits of lo word
++	ldq_u	t2, 8(a1)	# U : read next high-order source word
++
++	addq	a1, 8, a1	# E :
++	cmpbge	zero, t2, t8	# E : (stall for t2)
++	nop			# E :
++	bne	t8, $u_eos	# U : (stall)
++
++	/* Unaligned copy main loop.  In order to avoid reading too much,
++	   the loop is structured to detect zeros in aligned source words.
++	   This has, unfortunately, effectively pulled half of a loop
++	   iteration out into the head and half into the tail, but it does
++	   prevent nastiness from accumulating in the very thing we want
++	   to run as fast as possible.
++
++	   On entry to this basic block:
++	   t0 == the shifted high-order bits from the previous source word
++	   t2 == the unshifted current source word
++
++	   We further know that t2 does not contain a null terminator.  */
++
++	.align 3
++$u_loop:
++	extqh	t2, a1, t1	# U : extract high bits for current word
++	addq	a1, 8, a1	# E : (stall)
++	extql	t2, a1, t3	# U : extract low bits for next time (stall)
++	addq	a0, 8, a0	# E :
++
++	or	t0, t1, t1	# E : current dst word now complete
++	ldq_u	t2, 0(a1)	# L : Latency=3 load high word for next time
++	stq_u	t1, -8(a0)	# L : save the current word (stall)
++	mov	t3, t0		# E :
++
++	cmpbge	zero, t2, t8	# E : test new word for eos
++	beq	t8, $u_loop	# U : (stall)
++	nop
++	nop
++
++	/* We've found a zero somewhere in the source word we just read.
++	   If it resides in the lower half, we have one (probably partial)
++	   word to write out, and if it resides in the upper half, we
++	   have one full and one partial word left to write out.
++
++	   On entry to this basic block:
++	   t0 == the shifted high-order bits from the previous source word
++	   t2 == the unshifted current source word.  */
++$u_eos:
++	extqh	t2, a1, t1	# U :
++	or	t0, t1, t1	# E : first (partial) source word complete (stall)
++	cmpbge	zero, t1, t8	# E : is the null in this first bit? (stall)
++	bne	t8, $u_final	# U : (stall)
++
++$u_late_head_exit:
++	stq_u	t1, 0(a0)	# L : the null was in the high-order bits
++	addq	a0, 8, a0	# E :
++	extql	t2, a1, t1	# U :
++	cmpbge	zero, t1, t8	# E : (stall)
++
++	/* Take care of a final (probably partial) result word.
++	   On entry to this basic block:
++	   t1 == assembled source word
++	   t8 == cmpbge mask that found the null.  */
++$u_final:
++	negq	t8, t6		# E : isolate low bit set
++	and	t6, t8, t12	# E : (stall)
++	and	t12, 0x80, t6	# E : avoid dest word load if we can (stall)
++	bne	t6, 1f		# U : (stall)
++
++	ldq_u	t0, 0(a0)	# E :
++	subq	t12, 1, t6	# E :
++	or	t6, t12, t8	# E : (stall)
++	zapnot	t1, t6, t1	# U : kill source bytes >= null (stall)
++
++	zap	t0, t8, t0	# U : kill dest bytes <= null (2 cycle data stall)
++	or	t0, t1, t1	# E : (stall)
++	nop
++	nop
++
++1:	stq_u	t1, 0(a0)	# L :
++	ret	(t9)		# L0 : Latency=3
++	nop
++	nop
++
++	/* Unaligned copy entry point.  */
++	.align 4
++$unaligned:
++
++	ldq_u	t1, 0(a1)	# L : load first source word
++	and	a0, 7, t4	# E : find dest misalignment
++	and	a1, 7, t5	# E : find src misalignment
++	/* Conditionally load the first destination word and a bytemask
++	   with 0xff indicating that the destination byte is sacrosanct.  */
++	mov	zero, t0	# E :
++
++	mov	zero, t6	# E :
++	beq	t4, 1f		# U :
++	ldq_u	t0, 0(a0)	# L :
++	lda	t6, -1		# E :
++
++	mskql	t6, a0, t6	# U :
++	nop
++	nop
++	nop
++1:
++	subq	a1, t4, a1	# E : sub dest misalignment from src addr
++	/* If source misalignment is larger than dest misalignment, we need
++	   extra startup checks to avoid SEGV.  */
++	cmplt	t4, t5, t12	# E :
++	beq	t12, $u_head	# U :
++	lda	t2, -1		# E : mask out leading garbage in source
++
++	mskqh	t2, t5, t2	# U :
++	ornot	t1, t2, t3	# E : (stall)
++	cmpbge	zero, t3, t8	# E : is there a zero? (stall)
++	beq	t8, $u_head	# U : (stall)
++
++	/* At this point we've found a zero in the first partial word of
++	   the source.  We need to isolate the valid source data and mask
++	   it into the original destination data.  (Incidentally, we know
++	   that we'll need at least one byte of that original dest word.) */
++
++	ldq_u	t0, 0(a0)	# L :
++	negq	t8, t6		# E : build bitmask of bytes <= zero
++	and	t6, t8, t12	# E : (stall)
++	and	a1, 7, t5	# E :
++
++	subq	t12, 1, t6	# E :
++	or	t6, t12, t8	# E : (stall)
++	srl	t12, t5, t12	# U : adjust final null return value
++	zapnot	t2, t8, t2	# U : prepare source word; mirror changes (stall)
++
++	and	t1, t2, t1	# E : to source validity mask
++	extql	t2, a1, t2	# U :
++	extql	t1, a1, t1	# U : (stall)
++	andnot	t0, t2, t0	# .. e1 : zero place for source to reside (stall)
++
++	or	t0, t1, t1	# e1    : and put it there
++	stq_u	t1, 0(a0)	# .. e0 : (stall)
++	ret	(t9)		# e1    :
++	nop
++
++	.end __stxcpy
++
+diff -ruNb linux-22/arch/alpha/lib/ev6-stxncpy.S linux/arch/alpha/lib/ev6-stxncpy.S
+--- linux-22/arch/alpha/lib/ev6-stxncpy.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev6-stxncpy.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,399 @@
++/*
++ * arch/alpha/lib/ev6-stxncpy.S
++ * 21264 version contributed by Rick Gorton <rick.gorton@api-networks.com>
++ *
++ * Copy no more than COUNT bytes of the null-terminated string from
++ * SRC to DST.
++ *
++ * This is an internal routine used by strncpy, stpncpy, and strncat.
++ * As such, it uses special linkage conventions to make implementation
++ * of these public functions more efficient.
++ *
++ * On input:
++ *	t9 = return address
++ *	a0 = DST
++ *	a1 = SRC
++ *	a2 = COUNT
++ *
++ * Furthermore, COUNT may not be zero.
++ *
++ * On output:
++ *	t0  = last word written
++ *	t10 = bitmask (with one bit set) indicating the byte position of
++ *	      the end of the range specified by COUNT
++ *	t12 = bitmask (with one bit set) indicating the last byte written
++ *	a0  = unaligned address of the last *word* written
++ *	a2  = the number of full words left in COUNT
++ *
++ * Furthermore, v0, a3-a5, t11, t12, and $at are untouched.
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ */
++
++#include <alpha/regdef.h>
++
++	.set noat
++	.set noreorder
++
++	.text
++
++/* There is a problem with either gdb (as of 4.16) or gas (as of 2.7) that
++   doesn't like putting the entry point for a procedure somewhere in the
++   middle of the procedure descriptor.  Work around this by putting the
++   aligned copy in its own procedure descriptor */
++
++
++	.ent stxncpy_aligned
++	.align 4
++stxncpy_aligned:
++	.frame sp, 0, t9, 0
++	.prologue 0
++
++	/* On entry to this basic block:
++	   t0 == the first destination word for masking back in
++	   t1 == the first source word.  */
++
++	/* Create the 1st output word and detect 0's in the 1st input word.  */
++	lda	t2, -1		# E : build a mask against false zero
++	mskqh	t2, a1, t2	# U :   detection in the src word (stall)
++	mskqh	t1, a1, t3	# U :
++	ornot	t1, t2, t2	# E : (stall)
++
++	mskql	t0, a1, t0	# U : assemble the first output word
++	cmpbge	zero, t2, t8	# E : bits set iff null found
++	or	t0, t3, t0	# E : (stall)
++	beq	a2, $a_eoc	# U :
++
++	bne	t8, $a_eos	# U :
++	nop
++	nop
++	nop
++
++	/* On entry to this basic block:
++	   t0 == a source word not containing a null.  */
++
++	/*
++	 * nops here to:
++	 *	separate store quads from load quads
++	 *	limit of 1 bcond/quad to permit training
++	 */
++$a_loop:
++	stq_u	t0, 0(a0)	# L :
++	addq	a0, 8, a0	# E :
++	subq	a2, 1, a2	# E :
++	nop
++
++	ldq_u	t0, 0(a1)	# L :
++	addq	a1, 8, a1	# E :
++	cmpbge	zero, t0, t8	# E :
++	beq	a2, $a_eoc      # U :
++
++	beq	t8, $a_loop	# U :
++	nop
++	nop
++	nop
++
++	/* Take care of the final (partial) word store.  At this point
++	   the end-of-count bit is set in t8 iff it applies.
++
++	   On entry to this basic block we have:
++	   t0 == the source word containing the null
++	   t8 == the cmpbge mask that found it.  */
++
++$a_eos:
++	negq	t8, t12		# E : find low bit set
++	and	t8, t12, t12	# E : (stall)
++	/* For the sake of the cache, don't read a destination word
++	   if we're not going to need it.  */
++	and	t12, 0x80, t6	# E : (stall)
++	bne	t6, 1f		# U : (stall)
++
++	/* We're doing a partial word store and so need to combine
++	   our source and original destination words.  */
++	ldq_u	t1, 0(a0)	# L :
++	subq	t12, 1, t6	# E :
++	or	t12, t6, t8	# E : (stall)
++	zapnot	t0, t8, t0	# U : clear src bytes > null (stall)
++
++	zap	t1, t8, t1	# .. e1 : clear dst bytes <= null
++	or	t0, t1, t0	# e1    : (stall)
++	nop
++	nop
++
++1:	stq_u	t0, 0(a0)	# L :
++	ret	(t9)		# L0 : Latency=3
++	nop
++	nop
++
++	/* Add the end-of-count bit to the eos detection bitmask.  */
++$a_eoc:
++	or	t10, t8, t8	# E :
++	br	$a_eos		# L0 : Latency=3
++	nop
++	nop
++
++	.end stxncpy_aligned
++
++	.align 4
++	.ent __stxncpy
++	.globl __stxncpy
++__stxncpy:
++	.frame sp, 0, t9, 0
++	.prologue 0
++
++	/* Are source and destination co-aligned?  */
++	xor	a0, a1, t1	# E :
++	and	a0, 7, t0	# E : find dest misalignment
++	and	t1, 7, t1	# E : (stall)
++	addq	a2, t0, a2	# E : bias count by dest misalignment (stall)
++
++	subq	a2, 1, a2	# E :
++	and	a2, 7, t2	# E : (stall)
++	srl	a2, 3, a2	# U : a2 = loop counter = (count - 1)/8 (stall)
++	addq	zero, 1, t10	# E :
++
++	sll	t10, t2, t10	# U : t10 = bitmask of last count byte
++	bne	t1, $unaligned	# U :
++	/* We are co-aligned; take care of a partial first word.  */
++	ldq_u	t1, 0(a1)	# L : load first src word
++	addq	a1, 8, a1	# E :
++
++	beq	t0, stxncpy_aligned     # U : avoid loading dest word if not needed
++	ldq_u	t0, 0(a0)	# L :
++	nop
++	nop
++
++	br	stxncpy_aligned	# .. e1 :
++	nop
++	nop
++	nop
++
++
++
++/* The source and destination are not co-aligned.  Align the destination
++   and cope.  We have to be very careful about not reading too much and
++   causing a SEGV.  */
++
++	.align 4
++$u_head:
++	/* We know just enough now to be able to assemble the first
++	   full source word.  We can still find a zero at the end of it
++	   that prevents us from outputting the whole thing.
++
++	   On entry to this basic block:
++	   t0 == the first dest word, unmasked
++	   t1 == the shifted low bits of the first source word
++	   t6 == bytemask that is -1 in dest word bytes */
++
++	ldq_u	t2, 8(a1)	# L : Latency=3 load second src word
++	addq	a1, 8, a1	# E :
++	mskql	t0, a0, t0	# U : mask trailing garbage in dst
++	extqh	t2, a1, t4	# U : (3 cycle stall on t2)
++
++	or	t1, t4, t1	# E : first aligned src word complete (stall)
++	mskqh	t1, a0, t1	# U : mask leading garbage in src (stall)
++	or	t0, t1, t0	# E : first output word complete (stall)
++	or	t0, t6, t6	# E : mask original data for zero test (stall)
++
++	cmpbge	zero, t6, t8	# E :
++	beq	a2, $u_eocfin	# U :
++	nop
++	nop
++
++	bne	t8, $u_final	# U :
++	lda	t6, -1		# E : mask out the bits we have
++	mskql	t6, a1, t6	# U :   already seen (stall)
++	stq_u	t0, 0(a0)	# L : store first output word
++
++	or      t6, t2, t2		# E :
++	cmpbge	zero, t2, t8		# E : find nulls in second partial (stall)
++	addq	a0, 8, a0		# E :
++	subq	a2, 1, a2		# E :
++
++	bne	t8, $u_late_head_exit	# U :
++	/* Finally, we've got all the stupid leading edge cases taken care
++	   of and we can set up to enter the main loop.  */
++	extql	t2, a1, t1	# U : position hi-bits of lo word
++	ldq_u	t2, 8(a1)	# L : read next high-order source word
++	addq	a1, 8, a1	# E :
++
++	cmpbge	zero, t2, t8	# E : (stall)
++	beq	a2, $u_eoc	# U :
++	nop
++	nop
++
++	bne	t8, $u_eos	# e1    :
++	nop
++	nop
++	nop
++
++	/* Unaligned copy main loop.  In order to avoid reading too much,
++	   the loop is structured to detect zeros in aligned source words.
++	   This has, unfortunately, effectively pulled half of a loop
++	   iteration out into the head and half into the tail, but it does
++	   prevent nastiness from accumulating in the very thing we want
++	   to run as fast as possible.
++
++	   On entry to this basic block:
++	   t1 == the shifted high-order bits from the previous source word
++	   t2 == the unshifted current source word
++
++	   We further know that t2 does not contain a null terminator.  */
++
++	.align 4
++$u_loop:
++	extqh	t2, a1, t0	# U : extract high bits for current word
++	addq	a1, 8, a1	# E :
++	extql	t2, a1, t3	# U : extract low bits for next time
++	addq	a0, 8, a0	# E :
++
++	or	t0, t1, t0	# E : current dst word now complete
++	ldq_u	t2, 0(a1)	# U : Latency=3 load high word for next time
++	stq_u	t0, -8(a0)	# U : save the current word (stall)
++	mov	t3, t1		# E :
++
++	subq	a2, 1, a2	# E :
++	cmpbge	zero, t2, t8	# E : test new word for eos (2 cycle stall for data)
++	beq	a2, $u_eoc	# U : (stall)
++	nop
++
++	beq	t8, $u_loop	# U :
++	nop
++	nop
++	nop
++
++	/* We've found a zero somewhere in the source word we just read.
++	   If it resides in the lower half, we have one (probably partial)
++	   word to write out, and if it resides in the upper half, we
++	   have one full and one partial word left to write out.
++
++	   On entry to this basic block:
++	   t1 == the shifted high-order bits from the previous source word
++	   t2 == the unshifted current source word.  */
++$u_eos:
++	extqh	t2, a1, t0	# U :
++	or	t0, t1, t0	# E : first (partial) source word complete (stall)
++	cmpbge	zero, t0, t8	# E : is the null in this first bit? (stall)
++	bne	t8, $u_final	# U : (stall)
++
++	stq_u	t0, 0(a0)	# L : the null was in the high-order bits
++	addq	a0, 8, a0	# E :
++	subq	a2, 1, a2	# E :
++	nop
++
++$u_late_head_exit:
++	extql	t2, a1, t0	# U :
++	cmpbge	zero, t0, t8	# E :
++	or	t8, t10, t6	# E : (stall)
++	cmoveq	a2, t6, t8	# E : Latency=2, extra map slot (stall)
++
++	/* Take care of a final (probably partial) result word.
++	   On entry to this basic block:
++	   t0 == assembled source word
++	   t8 == cmpbge mask that found the null.  */
++$u_final:
++	negq	t8, t6		# E : isolate low bit set
++	and	t6, t8, t12	# E : (stall)
++	and	t12, 0x80, t6	# E : avoid dest word load if we can (stall)
++	bne	t6, 1f		# U : (stall)
++
++	ldq_u	t1, 0(a0)	# L :
++	subq	t12, 1, t6	# E :
++	or	t6, t12, t8	# E : (stall)
++	zapnot	t0, t8, t0	# U : kill source bytes > null
++
++	zap	t1, t8, t1	# U : kill dest bytes <= null
++	or	t0, t1, t0	# E : (stall)
++	nop
++	nop
++
++1:	stq_u	t0, 0(a0)	# L :
++	ret	(t9)		# L0 : Latency=3
++
++$u_eoc:				# end-of-count
++	extqh	t2, a1, t0	# U :
++	or	t0, t1, t0	# E : (stall)
++	cmpbge	zero, t0, t8	# E : (stall)
++	nop
++
++$u_eocfin:			# end-of-count, final word
++	or	t10, t8, t8	# E :
++	br	$u_final	# L0 : Latency=3
++	nop
++	nop
++
++	/* Unaligned copy entry point.  */
++	.align 4
++$unaligned:
++
++	ldq_u	t1, 0(a1)	# L : load first source word
++	and	a0, 7, t4	# E : find dest misalignment
++	and	a1, 7, t5	# E : find src misalignment
++	/* Conditionally load the first destination word and a bytemask
++	   with 0xff indicating that the destination byte is sacrosanct.  */
++	mov	zero, t0	# E :
++
++	mov	zero, t6	# E :
++	beq	t4, 1f		# U :
++	ldq_u	t0, 0(a0)	# L :
++	lda	t6, -1		# E :
++
++	mskql	t6, a0, t6	# U :
++	nop
++	nop
++	nop
++1:
++	subq	a1, t4, a1	# E : sub dest misalignment from src addr
++
++	/* If source misalignment is larger than dest misalignment, we need
++	   extra startup checks to avoid SEGV.  */
++
++	cmplt	t4, t5, t12	# E :
++	extql	t1, a1, t1	# U : shift src into place
++	lda	t2, -1		# E : for creating masks later
++	beq	t12, $u_head	# U : (stall)
++
++	mskqh	t2, t5, t2	# U : begin src byte validity mask
++	cmpbge	zero, t1, t8	# E : is there a zero?
++	extql	t2, a1, t2	# U :
++	or	t8, t10, t5	# E : test for end-of-count too
++
++	cmpbge	zero, t2, t3	# E :
++	cmoveq	a2, t5, t8	# E : Latency=2, extra map slot
++	nop			# E : keep with cmoveq
++	andnot	t8, t3, t8	# E : (stall)
++
++	beq	t8, $u_head	# U :
++	/* At this point we've found a zero in the first partial word of
++	   the source.  We need to isolate the valid source data and mask
++	   it into the original destination data.  (Incidentally, we know
++	   that we'll need at least one byte of that original dest word.) */
++	ldq_u	t0, 0(a0)	# L :
++	negq	t8, t6		# E : build bitmask of bytes <= zero
++	mskqh	t1, t4, t1	# U :
++
++	and	t6, t8, t12	# E :
++	subq	t12, 1, t6	# E : (stall)
++	or	t6, t12, t8	# E : (stall)
++	zapnot	t2, t8, t2	# U : prepare source word; mirror changes (stall)
++
++	zapnot	t1, t8, t1	# U : to source validity mask
++	andnot	t0, t2, t0	# E : zero place for source to reside
++	or	t0, t1, t0	# E : and put it there (stall both t0, t1)
++	stq_u	t0, 0(a0)	# L : (stall)
++
++	ret	(t9)		# L0 : Latency=3
++	nop
++	nop
++	nop
++
++	.end __stxncpy
++
+diff -ruNb linux-22/arch/alpha/lib/ev67-strcat.S linux/arch/alpha/lib/ev67-strcat.S
+--- linux-22/arch/alpha/lib/ev67-strcat.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev67-strcat.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,54 @@
++/*
++ * arch/alpha/lib/ev67-strcat.S
++ * 21264 version contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Append a null-terminated string from SRC to DST.
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ * Commentary: It seems bogus to walk the input string twice - once
++ * to determine the length, and then again while doing the copy.
++ * A significant (future) enhancement would be to only read the input
++ * string once.
++ */
++
++
++	.text
++
++	.align 4
++	.globl strcat
++	.ent strcat
++strcat:
++	.frame $30, 0, $26
++	.prologue 0
++
++	mov	$16, $0		# E : set up return value
++	/* Find the end of the string.  */
++	ldq_u   $1, 0($16)	# L : load first quadword (a0 may be misaligned)
++	lda     $2, -1		# E :
++	insqh   $2, $16, $2	# U :
++
++	andnot  $16, 7, $16	# E :
++	or      $2, $1, $1	# E :
++	cmpbge  $31, $1, $2	# E : bits set iff byte == 0
++	bne     $2, $found	# U :
++
++$loop:	ldq     $1, 8($16)	# L :
++	addq    $16, 8, $16	# E :
++	cmpbge  $31, $1, $2	# E :
++	beq     $2, $loop	# U :
++
++$found:	cttz	$2, $3		# U0 :
++	addq	$16, $3, $16	# E :
++	/* Now do the append.  */
++	mov	$26, $23	# E :
++	br	__stxcpy	# L0 :
++
++	.end strcat
+diff -ruNb linux-22/arch/alpha/lib/ev67-strchr.S linux/arch/alpha/lib/ev67-strchr.S
+--- linux-22/arch/alpha/lib/ev67-strchr.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev67-strchr.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,88 @@
++/*
++ * arch/alpha/lib/ev67-strchr.S
++ * 21264 version contributed by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Return the address of a given character within a null-terminated
++ * string, or null if it is not found.
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ */
++
++#include <alpha/regdef.h>
++
++	.set noreorder
++	.set noat
++
++	.align 4
++	.globl strchr
++	.ent strchr
++strchr:
++	.frame sp, 0, ra
++	.prologue 0
++
++	ldq_u   t0, 0(a0)	# L : load first quadword Latency=3
++	and	a1, 0xff, t3	# E : 00000000000000ch
++	insbl	a1, 1, t5	# U : 000000000000ch00
++	insbl	a1, 7, a2	# U : ch00000000000000
++
++	insbl	t3, 6, a3	# U : 00ch000000000000
++	or	t5, t3, a1	# E : 000000000000chch
++	andnot  a0, 7, v0	# E : align our loop pointer
++	lda	t4, -1		# E : build garbage mask
++
++	mskqh	t4, a0, t4	# U : only want relevant part of first quad
++	or	a2, a3, a2	# E : chch000000000000
++	inswl	a1, 2, t5	# E : 00000000chch0000
++	inswl	a1, 4, a3	# E : 0000chch00000000
++
++	or	a1, a2, a1	# E : chch00000000chch
++	or	a3, t5, t5	# E : 0000chchchch0000
++	cmpbge  zero, t0, t2	# E : bits set iff byte == zero
++	cmpbge	zero, t4, t4	# E : bits set iff byte is garbage
++
++	/* This quad is _very_ serialized.  Lots of stalling happens */
++	or	t5, a1, a1	# E : chchchchchchchch
++	xor	t0, a1, t1	# E : make bytes == c zero
++	cmpbge  zero, t1, t3	# E : bits set iff byte == c
++	or	t2, t3, t0	# E : bits set iff char match or zero match
++
++	andnot	t0, t4, t0	# E : clear garbage bits
++	cttz	t0, a2		# U0 : speculative (in case we get a match)
++	nop			# E :
++	bne	t0, $found	# U :
++
++	/*
++	 * Yuk.  This loop is going to stall like crazy waiting for the
++	 * data to be loaded.  Not much can be done about it unless it's
++	 * unrolled multiple times - is that safe to do in kernel space?
++	 * Or would exception handling recovery code do the trick here?
++	 */
++$loop:	ldq	t0, 8(v0)	# L : Latency=3
++	addq	v0, 8, v0	# E :
++	xor	t0, a1, t1	# E :
++	cmpbge	zero, t0, t2	# E : bits set iff byte == 0
++
++	cmpbge	zero, t1, t3	# E : bits set iff byte == c
++	or	t2, t3, t0	# E :
++	cttz	t3, a2		# U0 : speculative (in case we get a match)
++	beq	t0, $loop	# U :
++
++$found:	negq    t0, t1		# E : clear all but least set bit
++	and     t0, t1, t0	# E :
++	and	t0, t3, t1	# E : bit set iff byte was the char
++	addq	v0, a2, v0	# E : Add in the bit number from above
++
++	cmoveq	t1, $31, v0	# E : Two mapping slots, latency = 2
++	nop
++	nop
++	ret			# L0 :
++
++	.end strchr
+diff -ruNb linux-22/arch/alpha/lib/ev67-strlen.S linux/arch/alpha/lib/ev67-strlen.S
+--- linux-22/arch/alpha/lib/ev67-strlen.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev67-strlen.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,49 @@
++/*
++ * arch/alpha/lib/ev67-strlen.S
++ * 21264 version by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Finds length of a 0-terminated string.  Optimized for the
++ * Alpha architecture:
++ *
++ *	- memory accessed as aligned quadwords only
++ *	- uses bcmpge to compare 8 bytes in parallel
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ */
++
++	.set noreorder
++	.set noat
++
++	.globl	strlen
++	.ent	strlen
++	.align 4
++strlen:
++	ldq_u	$1, 0($16)	# L : load first quadword ($16  may be misaligned)
++	lda	$2, -1($31)	# E :
++	insqh	$2, $16, $2	# U :
++	andnot	$16, 7, $0	# E :
++
++	or	$2, $1, $1	# E :
++	cmpbge	$31, $1, $2	# E : $2  <- bitmask: bit i == 1 <==> i-th byte == 0
++	nop			# E :
++	bne	$2, $found	# U :
++
++$loop:	ldq	$1, 8($0)	# L :
++	addq	$0, 8, $0	# E : addr += 8
++	cmpbge	$31, $1, $2	# E :
++	beq	$2, $loop	# U :
++
++$found:
++	cttz	$2, $3		# U0 :
++	addq	$0, $3, $0	# E :
++	subq	$0, $16, $0	# E :
++	ret	$31, ($26)	# L0 :
++
++	.end	strlen
+diff -ruNb linux-22/arch/alpha/lib/ev67-strlen_user.S linux/arch/alpha/lib/ev67-strlen_user.S
+--- linux-22/arch/alpha/lib/ev67-strlen_user.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev67-strlen_user.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,109 @@
++/*
++ * arch/alpha/lib/ev67-strlen_user.S
++ * 21264 version contributed by Rick Gorton <rick.gorton@api-networks.com>
++ *
++ * Return the length of the string including the NULL terminator
++ * (strlen+1) or zero if an error occurred.
++ *
++ * In places where it is critical to limit the processing time,
++ * and the data is not trusted, strnlen_user() should be used.
++ * It will return a value greater than its second argument if
++ * that limit would be exceeded. This implementation is allowed
++ * to access memory beyond the limit, but will not cross a page
++ * boundary when doing so.
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *      Compiler Writer's Guide for the Alpha 21264
++ *      abbreviated as 'CWG' in other comments here
++ *      ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *      E       - either cluster
++ *      U       - upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *      L       - lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ */
++
++#include <alpha/regdef.h>
++
++
++/* Allow an exception for an insn; exit if we get one.  */
++#define EX(x,y...)			\
++	99: x,##y;			\
++	.section __ex_table,"a";	\
++	.gprel32 99b;			\
++	lda v0, $exception-99b(zero);	\
++	.previous
++
++
++	.set noreorder
++	.set noat
++	.text
++
++	.globl __strlen_user
++	.ent __strlen_user
++	.frame sp, 0, ra
++
++	.align 4
++__strlen_user:
++	ldah	a1, 32767(zero)	# do not use plain strlen_user() for strings
++				# that might be almost 2 GB long; you should
++				# be using strnlen_user() instead
++	nop
++	nop
++	nop
++
++	.globl __strnlen_user
++
++	.align 4
++__strnlen_user:
++	ldgp	$29,0($27)	# E E : we do exceptions -- we need the gp.
++				/* Decomposes into lda/ldah */
++	.prologue 1
++	EX( ldq_u t0, 0(a0) )	# L : load first quadword (a0 may be misaligned)
++	lda     t1, -1(zero)	# E :
++
++	insqh   t1, a0, t1	# U :
++	andnot  a0, 7, v0	# E :
++	or      t1, t0, t0	# E :
++	subq	a0, 1, a0	# E : get our +1 for the return 
++
++	cmpbge  zero, t0, t1	# E : t1 <- bitmask: bit i == 1 <==> i-th byte == 0
++	subq	a1, 7, t2	# E :
++	subq	a0, v0, t0	# E :
++	bne     t1, $found	# U :
++
++	addq	t2, t0, t2	# E :
++	addq	a1, 1, a1	# E :
++	nop			# E :
++	nop			# E :
++
++	.align 4
++$loop:	ble	t2, $limit	# U :
++	EX( ldq t0, 8(v0) )	# L :
++	nop			# E :
++	nop			# E :
++
++	cmpbge  zero, t0, t1	# E :
++	subq	t2, 8, t2	# E :
++	addq    v0, 8, v0	# E : addr += 8
++	beq     t1, $loop	# U :
++
++$found: cttz	t1, t2		# U0 :
++	addq	v0, t2, v0	# E :
++	subq    v0, a0, v0	# E :
++	ret			# L0 :
++
++$exception:
++	nop
++	nop
++	nop
++	ret
++
++	.align 4		# currently redundant
++$limit:
++	nop
++	nop
++	subq	a1, t2, v0
++	ret
++
++	.end __strlen_user
+diff -ruNb linux-22/arch/alpha/lib/ev67-strncat.S linux/arch/alpha/lib/ev67-strncat.S
+--- linux-22/arch/alpha/lib/ev67-strncat.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev67-strncat.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,94 @@
++/*
++ * arch/alpha/lib/ev67-strncat.S
++ * 21264 version contributed by Rick Gorton <rick.gorton@api-networks.com>
++ *
++ * Append no more than COUNT characters from the null-terminated string SRC
++ * to the null-terminated string DST.  Always null-terminate the new DST.
++ *
++ * This differs slightly from the semantics in libc in that we never write
++ * past count, whereas libc may write to count+1.  This follows the generic
++ * implementation in lib/string.c and is, IMHO, more sensible.
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ * Try not to change the actual algorithm if possible for consistency.
++ */
++
++
++	.text
++
++	.align 4
++	.globl strncat
++	.ent strncat
++strncat:
++	.frame $30, 0, $26
++	.prologue 0
++
++	mov	$16, $0		# set up return value
++	beq	$18, $zerocount	# U :
++	/* Find the end of the string.  */
++	ldq_u   $1, 0($16)	# L : load first quadword ($16 may be misaligned)
++	lda     $2, -1($31)	# E :
++
++	insqh   $2, $0, $2	# U :
++	andnot  $16, 7, $16	# E :
++	nop			# E :
++	or      $2, $1, $1	# E :
++
++	nop			# E :
++	nop			# E :
++	cmpbge  $31, $1, $2	# E : bits set iff byte == 0
++	bne     $2, $found	# U :
++
++$loop:	ldq     $1, 8($16)	# L :
++	addq    $16, 8, $16	# E :
++	cmpbge  $31, $1, $2	# E :
++	beq     $2, $loop	# U :
++
++$found:	cttz	$2, $3		# U0 :
++	addq	$16, $3, $16	# E :
++	nop			# E :
++	bsr	$23, __stxncpy	# L0 :/* Now do the append.  */
++
++	/* Worry about the null termination.  */
++
++	zapnot	$1, $27, $2	# U : was last byte a null?
++	cmplt	$27, $24, $5	# E : did we fill the buffer completely?
++	bne	$2, 0f		# U :
++	ret			# L0 :
++
++0:	or	$5, $18, $2	# E :
++	nop
++	bne	$2, 2f		# U :
++	and	$24, 0x80, $3	# E : no zero next byte
++
++	nop			# E :
++	bne	$3, 1f		# U :
++	/* Here there are bytes left in the current word.  Clear one.  */
++	addq	$24, $24, $24	# E : end-of-count bit <<= 1
++	nop			# E :
++
++2:	zap	$1, $24, $1	# U :
++	nop			# E :
++	stq_u	$1, 0($16)	# L :
++	ret			# L0 :
++
++1:	/* Here we must clear the first byte of the next DST word */
++	stb	$31, 8($16)	# L :
++	nop			# E :
++	nop			# E :
++	ret			# L0 :
++
++$zerocount:
++	nop			# E :
++	nop			# E :
++	nop			# E :
++	ret			# L0 :
++
++	.end strncat
+diff -ruNb linux-22/arch/alpha/lib/ev67-strrchr.S linux/arch/alpha/lib/ev67-strrchr.S
+--- linux-22/arch/alpha/lib/ev67-strrchr.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/ev67-strrchr.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,109 @@
++/*
++ * arch/alpha/lib/ev67-strrchr.S
++ * 21264 version by Rick Gorton <rick.gorton@alpha-processor.com>
++ *
++ * Finds length of a 0-terminated string.  Optimized for the
++ * Alpha architecture:
++ *
++ *	- memory accessed as aligned quadwords only
++ *	- uses bcmpge to compare 8 bytes in parallel
++ *
++ * Much of the information about 21264 scheduling/coding comes from:
++ *	Compiler Writer's Guide for the Alpha 21264
++ *	abbreviated as 'CWG' in other comments here
++ *	ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html
++ * Scheduling notation:
++ *	E	- either cluster
++ *	U	- upper subcluster; U0 - subcluster U0; U1 - subcluster U1
++ *	L	- lower subcluster; L0 - subcluster L0; L1 - subcluster L1
++ */
++
++
++#include <alpha/regdef.h>
++
++	.set noreorder
++	.set noat
++
++	.align 4
++	.ent strrchr
++	.globl strrchr
++strrchr:
++	.frame sp, 0, ra
++	.prologue 0
++
++	and	a1, 0xff, t2	# E : 00000000000000ch
++	insbl	a1, 1, t4	# U : 000000000000ch00
++	insbl	a1, 2, t5	# U : 0000000000ch0000
++	ldq_u   t0, 0(a0)	# L : load first quadword Latency=3
++
++	mov	zero, t6	# E : t6 is last match aligned addr
++	or	t2, t4, a1	# E : 000000000000chch
++	sll	t5, 8, t3	# U : 00000000ch000000
++	mov	zero, t8	# E : t8 is last match byte compare mask
++
++	andnot  a0, 7, v0	# E : align source addr
++	or	t5, t3, t3	# E : 00000000chch0000
++	sll	a1, 32, t2	# U : 0000chch00000000
++	sll	a1, 48, t4	# U : chch000000000000
++
++	or	t4, a1, a1	# E : chch00000000chch
++	or	t2, t3, t2	# E : 0000chchchch0000
++	or	a1, t2, a1	# E : chchchchchchchch
++	lda	t5, -1		# E : build garbage mask
++
++	cmpbge  zero, t0, t1	# E : bits set iff byte == zero
++	mskqh	t5, a0, t4	# E : Complete garbage mask
++	xor	t0, a1, t2	# E : make bytes == c zero
++	cmpbge	zero, t4, t4	# E : bits set iff byte is garbage
++
++	cmpbge  zero, t2, t3	# E : bits set iff byte == c
++	andnot	t1, t4, t1	# E : clear garbage from null test
++	andnot	t3, t4, t3	# E : clear garbage from char test
++	bne	t1, $eos	# U : did we already hit the terminator?
++
++	/* Character search main loop */
++$loop:
++	ldq	t0, 8(v0)	# L : load next quadword
++	cmovne	t3, v0, t6	# E : save previous comparisons match
++	nop			#   : Latency=2, extra map slot (keep nop with cmov)
++	nop
++
++	cmovne	t3, t3, t8	# E : Latency=2, extra map slot
++	nop			#   : keep with cmovne
++	addq	v0, 8, v0	# E :
++	xor	t0, a1, t2	# E :
++
++	cmpbge	zero, t0, t1	# E : bits set iff byte == zero
++	cmpbge	zero, t2, t3	# E : bits set iff byte == c
++	beq	t1, $loop	# U : if we havnt seen a null, loop
++	nop
++
++	/* Mask out character matches after terminator */
++$eos:
++	negq	t1, t4		# E : isolate first null byte match
++	and	t1, t4, t4	# E :
++	subq	t4, 1, t5	# E : build a mask of the bytes upto...
++	or	t4, t5, t4	# E : ... and including the null
++
++	and	t3, t4, t3	# E : mask out char matches after null
++	cmovne	t3, t3, t8	# E : save it, if match found Latency=2, extra map slot
++	nop			#   : Keep with cmovne
++	nop
++
++	cmovne	t3, v0, t6	# E :
++	nop			#   : Keep with cmovne
++	/* Locate the address of the last matched character */
++	ctlz	t8, t2		# U0 : Latency=3 (0x40 for t8=0)
++	nop
++
++	cmoveq	t8, 0x3f, t2	# E : Compensate for case when no match is seen
++	nop			# E : hide the cmov latency (2) behind ctlz latency
++	lda	t5, 0x3f($31)	# E :
++	subq	t5, t2, t5	# E : Normalize leading zero count
++
++	addq	t6, t5, v0	# E : and add to quadword address
++	ret			# L0 : Latency=3
++	nop
++	nop
++
++	.end strrchr
+diff -ruNb linux-22/arch/alpha/lib/memmove.S linux/arch/alpha/lib/memmove.S
+--- linux-22/arch/alpha/lib/memmove.S	Wed Dec 31 19:00:00 1969
++++ linux/arch/alpha/lib/memmove.S	Fri May  4 13:19:40 2001
+@@ -0,0 +1,176 @@
++/*
++ * arch/alpha/lib/memmove.S
++ *
++ * Barely optimized memmove routine for Alpha EV5.
++ *
++ * This is hand-massaged output from the original memcpy.c.  We defer to
++ * memcpy whenever possible; the backwards copy loops are not unrolled.
++ */
++        
++	.set noat
++	.set noreorder
++	.text
++
++	.align 4
++	.globl memmove
++	.ent memmove
++memmove:
++	addq $16,$18,$4
++	addq $17,$18,$5
++	cmpule $4,$17,$1		/*  dest + n <= src  */
++	cmpule $5,$16,$2		/*  dest >= src + n  */
++
++	bis $1,$2,$1
++	mov $16,$0
++	xor $16,$17,$2
++	bne $1,memcpy
++
++	and $2,7,$2			/* Test for src/dest co-alignment.  */
++	and $16,7,$1
++	cmpule $16,$17,$3
++	bne $3,$memmove_up		/* dest < src */
++
++	and $4,7,$1
++	bne $2,$misaligned_dn
++	unop
++	beq $1,$skip_aligned_byte_loop_head_dn
++
++$aligned_byte_loop_head_dn:
++	lda $4,-1($4)
++	lda $5,-1($5)
++	unop
++	ble $18,$egress
++
++	ldq_u $3,0($5)
++	ldq_u $2,0($4)
++	lda $18,-1($18)
++	extbl $3,$5,$1
++
++	insbl $1,$4,$1
++	mskbl $2,$4,$2
++	bis $1,$2,$1
++	and $4,7,$6
++
++	stq_u $1,0($4)
++	bne $6,$aligned_byte_loop_head_dn
++
++$skip_aligned_byte_loop_head_dn:
++	lda $18,-8($18)
++	blt $18,$skip_aligned_word_loop_dn
++
++$aligned_word_loop_dn:
++	ldq $1,-8($5)
++	nop
++	lda $5,-8($5)
++	lda $18,-8($18)
++
++	stq $1,-8($4)
++	nop
++	lda $4,-8($4)
++	bge $18,$aligned_word_loop_dn
++
++$skip_aligned_word_loop_dn:
++	lda $18,8($18)
++	bgt $18,$byte_loop_tail_dn
++	unop
++	ret $31,($26),1
++
++	.align 4
++$misaligned_dn:
++	nop
++	fnop
++	unop
++	beq $18,$egress
++
++$byte_loop_tail_dn:
++	ldq_u $3,-1($5)
++	ldq_u $2,-1($4)
++	lda $5,-1($5)
++	lda $4,-1($4)
++
++	lda $18,-1($18)
++	extbl $3,$5,$1
++	insbl $1,$4,$1
++	mskbl $2,$4,$2
++
++	bis $1,$2,$1
++	stq_u $1,0($4)
++	bgt $18,$byte_loop_tail_dn
++	br $egress
++
++$memmove_up:
++	mov $16,$4
++	mov $17,$5
++	bne $2,$misaligned_up
++	beq $1,$skip_aligned_byte_loop_head_up
++
++$aligned_byte_loop_head_up:
++	unop
++	ble $18,$egress
++	ldq_u $3,0($5)
++	ldq_u $2,0($4)
++
++	lda $18,-1($18)
++	extbl $3,$5,$1
++	insbl $1,$4,$1
++	mskbl $2,$4,$2
++
++	bis $1,$2,$1
++	lda $5,1($5)
++	stq_u $1,0($4)
++	lda $4,1($4)
++
++	and $4,7,$6
++	bne $6,$aligned_byte_loop_head_up
++
++$skip_aligned_byte_loop_head_up:
++	lda $18,-8($18)
++	blt $18,$skip_aligned_word_loop_up
++
++$aligned_word_loop_up:
++	ldq $1,0($5)
++	nop
++	lda $5,8($5)
++	lda $18,-8($18)
++
++	stq $1,0($4)
++	nop
++	lda $4,8($4)
++	bge $18,$aligned_word_loop_up
++
++$skip_aligned_word_loop_up:
++	lda $18,8($18)
++	bgt $18,$byte_loop_tail_up
++	unop
++	ret $31,($26),1
++
++	.align 4
++$misaligned_up:
++	nop
++	fnop
++	unop
++	beq $18,$egress
++
++$byte_loop_tail_up:
++	ldq_u $3,0($5)
++	ldq_u $2,0($4)
++	lda $18,-1($18)
++	extbl $3,$5,$1
++
++	insbl $1,$4,$1
++	mskbl $2,$4,$2
++	bis $1,$2,$1
++	stq_u $1,0($4)
++
++	lda $5,1($5)
++	lda $4,1($4)
++	nop
++	bgt $18,$byte_loop_tail_up
++
++$egress:
++	ret $31,($26),1
++	nop
++	nop
++	nop
++
++	.end memmove
+diff -ruNb linux-22/arch/alpha/lib/strcasecmp.c linux/arch/alpha/lib/strcasecmp.c
+--- linux-22/arch/alpha/lib/strcasecmp.c	Thu Apr 12 11:23:32 2001
++++ linux/arch/alpha/lib/strcasecmp.c	Fri May  4 13:19:40 2001
+@@ -1,5 +1,7 @@
+ /*
+  *  linux/arch/alpha/lib/strcasecmp.c
++ *	Original Author: ???
++ *	performance tuneup by Rick Gorton <rick.gorton@alpha-processor.com>
+  */
+ 
+ #include <linux/string.h>
+@@ -11,7 +13,13 @@
+ 
+ int strcasecmp(const char *a, const char *b)
+ {
+-	int ca, cb;
++	unsigned long ca, cb;
++	/*
++	 * Originally, declaration was 'int ca, cb;'.  Switching
++	 * to unsigned long permits much cleaner code sequences,
++	 * and avoids having to sign and zero extend values until
++	 * the final operation.
++	 */
+ 
+ 	do {
+ 		ca = *a++ & 0xff;
+diff -ruNb linux-22/include/asm-alpha/bitops.h linux/include/asm-alpha/bitops.h
+--- linux-22/include/asm-alpha/bitops.h	Thu Apr 12 11:23:31 2001
++++ linux/include/asm-alpha/bitops.h	Fri May  4 13:19:40 2001
+@@ -166,22 +166,37 @@
+ 	unsigned long sum = 0;
+ 
+ 	x = ~x & -~x;		/* set first 0 bit, clear others */
++
++#if (defined(__alpha_cix__) || defined(__alpha_fix__)) && defined(CONFIG_ALPHA_EV67)
++	/*
++	 * Count bits set in a byte
++	 * If the bits were all zeros, cttz comes back with 0x40.
++	 * Correct for that case.
++	 */
++	x &= 0xff;
++        __asm__ __volatile__ ("cttz %1,%0":"=r" (sum):"r"(x));
++	sum &= 0xf;
++#else
+ 	if (x & 0xF0) sum += 4;
+ 	if (x & 0xCC) sum += 2;
+ 	if (x & 0xAA) sum += 1;
++#endif
+ 
+ 	return sum;
+ }
+ 
+ extern inline unsigned long ffz(unsigned long word)
+ {
+-#if 0 && defined(__alpha_cix__)
+-	/* Swine architects -- a year after they publish v3 of the
+-	   handbook, in the 21264 data sheet they quietly change CIX
+-	   to FIX and remove the spiffy counting instructions.  */
++#if (defined(__alpha_cix__) || defined(__alpha_fix__)) && defined(CONFIG_ALPHA_EV67)
+ 	/* Whee.  EV6 can calculate it directly.  */
+ 	unsigned long result;
+-	__asm__("ctlz %1,%0" : "=r"(result) : "r"(~word));
++	__asm__ __volatile__("cttz %1,%0" : "=r"(result) : "r"(~word));
++	/*
++	 * If the bits were all zeros, cttz comes back with 0x40.
++	 * Correct for that case.
++	 */
++	result &= 0x3f;
++
+ 	return result;
+ #else
+ 	unsigned long bits, qofs, bofs;
+@@ -205,7 +220,13 @@
+ 
+ extern inline int ffs(int word)
+ {
+-	int result = ffz(~word);
++	int result;
++
++#if (defined(__alpha_cix__) || defined(__alpha_fix__)) && defined(CONFIG_ALPHA_EV67)
++	__asm__ __volatile__ ("cttz %1,%0":"=r" (result):"r"(word));
++#else
++	result = ffz(~word);
++#endif
+ 	return word ? result+1 : 0;
+ }
+ 
+@@ -214,7 +235,7 @@
+  * of bits set) of a N-bit word
+  */
+ 
+-#if 0 && defined(__alpha_cix__)
++#if (defined(__alpha_cix__) || defined(__alpha_fix__)) && defined(CONFIG_ALPHA_EV67)
+ /* Swine architects -- a year after they publish v3 of the handbook, in
+    the 21264 data sheet they quietly change CIX to FIX and remove the
+    spiffy counting instructions.  */
+diff -ruNb linux-22/include/asm-alpha/byteorder.h linux/include/asm-alpha/byteorder.h
+--- linux-22/include/asm-alpha/byteorder.h	Thu Apr 12 11:23:31 2001
++++ linux/include/asm-alpha/byteorder.h	Fri May  4 13:19:40 2001
+@@ -11,6 +11,21 @@
+ 
+ static __inline__ __const__ __u32 ___arch__swab32(__u32 x)
+ {
++/*
++ * Unfortunately, we can't use the 6 instruction sequence
++ * on ev6 since the latency of the UNPKBW is 3, which is
++ * pretty hard to hide.  Just in case a future implementation
++ * has a lower latency, here's the sequence (also by Mike Burrows)
++ *
++ * UNPKBW a0, v0	v0: 00AA00BB00CC00DD
++ * SLL v0, 24, a0	a0: BB00CC00DD000000
++ * BIS v0, a0, a0	a0: BBAACCBBDDCC00DD
++ * EXTWL a0, 6, v0	v0: 000000000000BBAA
++ * ZAP a0, 0xf3, a0	a0: 00000000DDCC0000
++ * ADDL a0, v0, v0	v0: ssssssssDDCCBBAA
++ */
++
++#if 0
+ 	__u64 t1, t2, t3;
+ 
+ 	/* Break the final or's out of the block so that gcc can
+@@ -30,6 +45,25 @@
+ 	: "r"(x));
+ 
+ 	return t3 + t2 + t1;
++#else
++
++        __u64 t1, t2, t3, t4;
++
++	/* 7 instruction sequence (by Mike Burrows) */
++
++        __asm__(
++        "INSLH %4, 7, %0        # %0 : 0000000000AABBCC\n\t"
++        "INSWL %4, 3, %1        # %1 : 000000CCDD000000\n\t"
++        "BIS %1, %0, %1         # %1 : 000000CCDDAABBCC\n\t"
++        "SRL %1, 16, %2         # %2 : 0000000000CCDDAA\n\t"
++        "ZAPNOT %1, 0xa, %0     # %0 : 00000000DD00BB00\n\t"
++        "ZAP %2, 0xa, %3        # %3 : 0000000000CC00AA\n\t"
++        "ADDL %3, %0, %1        # %2 : ssssssssDDCCBBAA\n\t"
++        : "=r"(t3), "=&r"(t1), "=&r"(t2), "=&r"(t4)
++        : "r"(x));
++
++        return t1;
++#endif
+ }
+ 
+ static __inline__ __const__ __u16 ___arch__swab16(__u16 x)
+diff -ruNb linux-22/include/asm-alpha/page.h linux/include/asm-alpha/page.h
+--- linux-22/include/asm-alpha/page.h	Thu Apr 12 11:36:03 2001
++++ linux/include/asm-alpha/page.h	Fri May  4 13:19:40 2001
+@@ -1,6 +1,7 @@
+ #ifndef _ALPHA_PAGE_H
+ #define _ALPHA_PAGE_H
+ 
++
+ /* PAGE_SHIFT determines the page size */
+ #define PAGE_SHIFT	13
+ #define PAGE_SIZE	(1UL << PAGE_SHIFT)
+@@ -12,61 +13,12 @@
+ 
+ #define STRICT_MM_TYPECHECKS
+ 
+-/*
+- * A _lot_ of the kernel time is spent clearing pages, so
+- * do this as fast as we possibly can. Also, doing this
+- * as a separate inline function (rather than memset())
+- * results in clearer kernel profiles as we see _who_ is
+- * doing page clearing or copying.
+- */
+-static inline void clear_page(unsigned long page)
+-{
+-	unsigned long count = PAGE_SIZE/64;
+-	unsigned long *ptr = (unsigned long *)page;
++extern void clear_page(unsigned long page);
++#define clear_user_page(page, vaddr)    clear_page(page)
+ 
+-	do {
+-		ptr[0] = 0;
+-		ptr[1] = 0;
+-		ptr[2] = 0;
+-		ptr[3] = 0;
+-		count--;
+-		ptr[4] = 0;
+-		ptr[5] = 0;
+-		ptr[6] = 0;
+-		ptr[7] = 0;
+-		ptr += 8;
+-	} while (count);
+-}
+ 
+-static inline void copy_page(unsigned long _to, unsigned long _from)
+-{
+-	unsigned long count = PAGE_SIZE/64;
+-	unsigned long *to = (unsigned long *)_to;
+-	unsigned long *from = (unsigned long *)_from;
+-
+-	do {
+-		unsigned long a,b,c,d,e,f,g,h;
+-		a = from[0];
+-		b = from[1];
+-		c = from[2];
+-		d = from[3];
+-		e = from[4];
+-		f = from[5];
+-		g = from[6];
+-		h = from[7];
+-		count--;
+-		from += 8;
+-		to[0] = a;
+-		to[1] = b;
+-		to[2] = c;
+-		to[3] = d;
+-		to[4] = e;
+-		to[5] = f;
+-		to[6] = g;
+-		to[7] = h;
+-		to += 8;
+-	} while (count);
+-}
++extern void copy_page(unsigned long  _to, unsigned long  _from);
++#define copy_user_page(to, from, vaddr) copy_page(to, from)
+ 
+ extern __inline__ int get_order(unsigned long size)
+ {
+@@ -118,6 +70,7 @@
+ #define __pgprot(x)	(x)
+ 
+ #endif /* STRICT_MM_TYPECHECKS */
++
+ #endif /* !ASSEMBLY */
+ 
+ /* to align the pointer to the (next) page boundary */
+diff -ruNb linux-22/include/asm-alpha/pgtable.h linux/include/asm-alpha/pgtable.h
+--- linux-22/include/asm-alpha/pgtable.h	Thu Apr 12 11:23:31 2001
++++ linux/include/asm-alpha/pgtable.h	Fri May  4 13:19:40 2001
+@@ -233,6 +233,11 @@
+ #define _PAGE_FOW	0x0004	/* used for page protection (fault on write) */
+ #define _PAGE_FOE	0x0008	/* used for page protection (fault on exec) */
+ #define _PAGE_ASM	0x0010
++#if defined(CONFIG_ALPHA_EV6) && !defined(__SMP__)
++#define _PAGE_MBE	0x0080	/* MB disable bit for EV6  */
++#else
++#define _PAGE_MBE	0x0000
++#endif
+ #define _PAGE_KRE	0x0100	/* xxx - see below on the "accessed" bit */
+ #define _PAGE_URE	0x0200	/* xxx */
+ #define _PAGE_KWE	0x1000	/* used to do the dirty bit in software */
+@@ -354,7 +359,7 @@
+  * and a page entry and page directory to the page they refer to.
+  */
+ extern inline pte_t mk_pte(unsigned long page, pgprot_t pgprot)
+-{ pte_t pte; pte_val(pte) = ((page-PAGE_OFFSET) << (32-PAGE_SHIFT)) | pgprot_val(pgprot); return pte; }
++{ pte_t pte; pte_val(pte) = ((page-PAGE_OFFSET) << (32-PAGE_SHIFT)) | pgprot_val(pgprot)|_PAGE_MBE; return pte; }
+ 
+ extern inline pte_t mk_pte_phys(unsigned long physpage, pgprot_t pgprot)
+ { pte_t pte; pte_val(pte) = (PHYS_TWIDDLE(physpage) << (32-PAGE_SHIFT)) | pgprot_val(pgprot); return pte; }
+diff -ruNb linux-22/include/asm-alpha/string.h linux/include/asm-alpha/string.h
+--- linux-22/include/asm-alpha/string.h	Thu Apr 12 11:23:31 2001
++++ linux/include/asm-alpha/string.h	Fri May  4 13:19:40 2001
+@@ -13,6 +13,8 @@
+ #define __HAVE_ARCH_MEMCPY
+ /* For backward compatibility with modules.  Unused otherwise.  */
+ extern void * __memcpy(void *, const void *, size_t);
++#define __HAVE_ARCH_MEMMOVE
++extern void * memmove(void *, const void *, size_t);
+ 
+ #if (__GNUC__ > 2) || (__GNUC__ == 2 && __GNUC_MINOR__ >= 91)
+ #define memcpy __builtin_memcpy
+diff -ruNb linux-22/include/config/alpha/ev67.h linux/include/config/alpha/ev67.h
+--- linux-22/include/config/alpha/ev67.h	Wed Dec 31 19:00:00 1969
++++ linux/include/config/alpha/ev67.h	Fri May  4 13:19:40 2001
+@@ -0,0 +1 @@
++#define CONFIG_ALPHA_EV67 1

@@ -1,0 +1,46 @@
+INSTALLING THE CYGNUS RELEASE
+
+
+"What's all this then?"
+-----------------------
+Release name:
+    alphalinux-000503
+
+Binary releases:
+    alphaev6-linux-gnu.tar.Z
+
+Source releases:
+    src.tar.Z
+
+Other files:
+    README (this file)
+    infozip.exe
+    unzip.exe
+
+Instructions for installing these releases are described below.
+
+
+Installing the UNIX Binary Release from a Tarball
+-------------------------------------------------
+Create a temporary directory for storing the tarballs, extracting the
+Install script and storing any output logs.  For thie binary release
+archive perform the following steps:
+
+    uncompress < TARBALL | tar xpf - Install
+    ./Install --tape=TARBALL --installdir=INSTALLDIR binaries
+
+Where "TARBALL" is the name of the binary archive and "INSTALLDIR" is
+the location you wish to install the binaries.  If you plan to install
+in /usr/cygnus, you may omit the --installdir option.
+
+
+Installing the Source Tarball on a UNIX System
+-----------------------------------------------
+Change to the directory where you would like to store the source and run:
+
+    uncompress < src.tar.Z | tar xpf -
+
+This will create a "src" subdirectory containing all the sources used to
+build this release.
+
+

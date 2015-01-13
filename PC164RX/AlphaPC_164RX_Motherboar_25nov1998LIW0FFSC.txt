@@ -1,0 +1,158 @@
+AlphaPC 164RX Motherboard
+
+Alpha performance in a competitive PC form factor
+
+By offering a pace-setting performance alternative to x86 and 
+RISC platforms, Compaq Computer Corporation's AlphaPC(TM) 
+164RX motherboard provides an easy, cost-effective solution 
+for companies entering high-performance embedded markets.
+
+Alpha motherboards are designed to use standard PC components 
+such as synchronous DRAM (SDRAM) DIMMs, PCI option cards, 
+power supplies, and enclosures. The AlphaPC 164RX offers PCI 
+and ISA slots, onboard PCI IDE, onboard Ethernet, and memory 
+support for up to 512 MB of SDRAM in an ATX form factor.
+
+The AlphaPC 164RX is ideal for performance-focused embedded 
+applications such as medical imaging, data and voice 
+communications, network and Internet servers, RIP engines - 
+any application where performance is critical.
+
+The AlphaPC 164RX motherboard integrates Compaq
+Computer Corporation's engineering excellence, quality, and 
+performance, creating an optimal solution for today's OEMs.
+
+Hardware features
+o
+AlphaPC 164RX supports the Alpha 21164PC (0.28 µm) 
+microprocessor operating at speeds of 525 or 600 MHz.
+o
+VLSI Technology's Polaris system controller chip interfaces 
+between the CPU, L2 cache, system memory, and PCI-based 
+subsystems. Polaris drives the system memory bus at a speed 
+of 75 MHz.
+o
+SDRAM memory subsystem includes:
+- 64 MB to 512 MB memory
+- Two 128-bit banks of memory
+- Two or four PC100-compliant 168-pin, unbuffered SDRAM DIMMs
+o
+L2 cache subsystem supports:
+- 128-bit data path
+- 1 MB cache size, using pipelined burst synchronous static 
+RAMs (PBSRAMs)
+o
+PCI bus support (33 MHz):
+- Five 5-V, 32-bit, PCI slots. One slot is bridged through a 
+PCI-to-PCI bridge chip and is shared with the ISA slot.
+o
+Integrated PCI peripheral support:
+- 10/100-Mb/s Ethernet onboard with TPE/RJ45 connector
+- PCI IDE control (PIO mode 4) with UltraDMA support
+o
+ISA bus support:
+- One ISA expansion slot (shared with the bridged PCI slot)
+o
+Integrated ISA 
+peripheral support:
+- 1 MB of flash ROM for AlphaBIOS
+- Real-time clock
+- Keyboard and mouse control
+- Diskette control
+- Two UARTs with modem control
+- Parallel port
+- 2 USB ports
+o
+Standard ATX form factor and power supply requirements.
+
+
+Software features
+o
+Windows NT(TM) AlphaBIOS firmware, which supports 
+installation of Windows NT 4.0. (Windows NT operating system 
+purchased separately.)
+
+Documentation
+o
+AlphaPC 164RX Motherboard Reference Manual (available on the 
+World Wide Web.)
+
+
+Warranty
+o
+One year.
+
+AlphaPC 164RX includes one of the following boards. 
+Documentation and firmware are available separately.
+
+
+Ordering information
+
+Product                                      Order number
+AlphaPC 164RX Motherboard, 525-MHz CPU,      21A05-B0
+1 MB L2 cache for Windows NT
+
+AlphaPC 164RX Motherboard, 600-MHz CPU,      21A05-B1
+1 MB L2 cache for Windows NT
+
+AlphaPC 164RX characteristics
+Characteristic                               Specification
+Power supply                                 Standard ATX PC
+                                             power supply
+
+Operating temperature range                  10C to 40C 
+                                             (50F to 104F)
+
+Storage temperature range                    -55C to 125C 
+                                             (-67F to 257F)
+
+Size                                         30.48 cm x 24.38 
+cm
+                                             (12.0 in x 9.6 
+in)
+
+Related products and documentation
+Product                                      Order number
+Motherboard Software Developer's Kit         QR-21B02-04
+(SDK) and Firmware Update
+
+AlphaPC 164RX Motherboard Reference Manual   EC-RE0NA-TE
+
+Alpha 21164PC (0.28 µm) Microprocessor       EC-RADPA-TE
+Hardware Reference Manual
+
+
+For more information
+To learn more about the availability of the AlphaPC 164RX, 
+contact your local sales office. To learn more about Compaq 
+Computer Corporation's portfolio of Alpha board products, 
+visit the Alpha OEM World Wide Web Internet site: 
+www.digital.com/alphaoem
+
+COMPAQ believes the information in this publication is 
+accurate as of its publication date; such information is 
+subject to change without notice.  
+
+COMPAQ is not responsible for any inadvertent errors.  
+
+COMPAQ conducts its business in a manner that conserves the 
+environment and protects the safety and health of its 
+employees, customers, and the community.  
+
+COMPAQ and the Compaq logo are registered in U.S. Patent and 
+Trademark Office. AlphaPowered is registered in U.S. Patent 
+and Trademark Office. OpenVMS is registered in U.S. Patent 
+and Trademark Office. 
+
+COMPAQ, the Compaq logo, and AlphaPC are registered in United 
+States Patent and Trademark Office.
+
+Windows NT is a trademark of Microsoft Corporation.
+
+Other product names mentioned herein may be trademarks and/or 
+registered trademarks of their respective companies.
+
+Printed in U.S.A. EC-F9499-56 Rel. # 103/98 10 64 2.5 
+Copyright 1998 Compaq Computer Corporation. All Rights 
+Reserved.
+

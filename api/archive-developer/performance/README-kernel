@@ -1,0 +1,61 @@
+
+The kernel tarballs in this directory contain the following files, which
+are replacements for alpha-specific performance critical routines (mostly
+assembly language) which have been hand-tuned and/or re-written with the
+21264 specifically in mind.
+
+The contributors of these performance patches are:
+	Rick Gorton	<rick.gorton@alpha-processor.com>
+	Mike Werner	<werner@darkwing.uoregon.edu>
+	Kazushige Goto	<goto@statabo.rim.or.jp>
+
+What you can expect:
+	A significant reduction in the amount of time spent in the kernel.
+	For some throughput tests (a kernel build), a patched kernel consumed
+	40% less system time than an unpatched kernel.  Your Mileage May Vary.
+
+What the various files in this directory are:
+	README-kernel			This file
+	kernelperf-2.2.17.tar.gz	Tarball form of the content
+	kernelperf-2.2.17-patch		Patch form
+
+	kernelperf-2.4.0-test6.tar.gz	tarball
+	kernelperf-2.4.0-test9.tar.gz	tarball
+	kernelperf-2.4.0-test9-patch	Patch form (only for test9 and later)
+
+
+The files in the 2.2.17 and 2.4.0 kernel patch tarballs are from
+the <Kernel>/arch/alpha/ subdirectory tree - the relevant source
+files (excluding configuration files) are:
+	<kernel>/arch/alpha/lib/clear_user.S
+	<kernel>/arch/alpha/lib/copy_user.S
+	<kernel>/arch/alpha/lib/csum_ipv6_magic.S
+	<kernel>/arch/alpha/lib/divide.S
+	<kernel>/arch/alpha/lib/memset.S
+	<kernel>/arch/alpha/lib/strchr.S
+	<kernel>/arch/alpha/lib/checksum.c
+	<kernel>/arch/alpha/lib/csum_partial_copy.c
+	<kernel>/arch/alpha/lib/memcpy.c
+	<kernel>/arch/alpha/lib/strcasecmp.c
+	<kernel>/arch/alpha/lib/strcat.S
+	<kernel>/arch/alpha/lib/strcpy.S
+	<kernel>/arch/alpha/lib/strlen.S
+	<kernel>/arch/alpha/lib/strlen_user.S
+	<kernel>/arch/alpha/lib/strncat.S
+	<kernel>/arch/alpha/lib/strncpy_from_user.S
+	<kernel>/arch/alpha/lib/strncpy.S
+	<kernel>/arch/alpha/lib/strrchr.S
+	<kernel>/arch/alpha/lib/stxcpy.S
+	<kernel>/arch/alpha/lib/stxncpy.S
+	<kernel>/include/asm-alpha/bitops.h
+	<kernel>/include/asm-alpha/byteorder.h
+	<kernel>/include/asm-alpha/page.h
+	<kernel>/include/asm-alpha/pgtable.h
+
+The files unique to the 2.4.0 kernel patch tarballs are:
+	<kernel>/arch/alpha/lib/memchr.S
+
+	Enjoy,
+
+		Rick Gorton
+		<rick.gorton@alpha-processor.com>

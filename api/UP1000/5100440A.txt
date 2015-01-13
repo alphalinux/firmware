@@ -1,0 +1,13 @@
+The source code for the object code and executable programs licensed 
+under GNU General Public License Version 2, June 1991 are available 
+from Alpha Processor, Inc. at the API web site 
+
+   http://www.Alpha-Processor.COM
+
+For each distributed object or executable form of the programs, you 
+will find an identifying API part number. You may use that part 
+number to find the corresponding machine-readable source code. 
+
+If you have any questions, contact Customer Support at API.
+
+51-0044-0A

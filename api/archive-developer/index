@@ -1,0 +1,113 @@
+<HTML>
+<HEAD>
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=windows-1252">
+<META NAME="Generator" CONTENT="Microsoft Word 97">
+<TITLE>index</TITLE>
+<META NAME="Template" CONTENT="C:\Program Files (x86)\Microsoft Office\Office\HTML.DOT">
+</HEAD>
+<BODY LINK="#0000ff" VLINK="#800080" BGCOLOR="#99ccff">
+
+<B><FONT FACE="Arial" SIZE=4><P>Alpha Developer links</P>
+</B></FONT><P>&nbsp;</P>
+<P>This is a preliminary bare-bones version of a web-site for and by developers which will contain links / info and source code for developers interested in porting and performance tuning for Alpha. The focus for now is on NT with Linux soon to follow. Please send any info / suggestions to alpha.developer@alpha-processor.com</P>
+<P ALIGN="CENTER">&nbsp;</P>
+<P><HR></P>
+<B><I><FONT FACE="Arial"><P>Porting guides / white papers</P>
+</B></I></FONT><DL>
+<DD><A HREF="DigitalMigrationGuide.doc">X86 NT to AlphaNT</A> <FONT COLOR="#ff0000">(old digital manual, needs updating)</DD>
+</FONT><DD><A HREF="WrappingIntelDLLs.txt">Calling Intel DLL's from alpha EXE's</A>. <FONT COLOR="#ff0000">(needs to be updated with code samples)</DD>
+</DL>
+</FONT><P><HR></P>
+<B><I><FONT FACE="Arial"><P>Compaq performance tools roadmap</P>
+</B></I></FONT><P>The following tools are being actively supported and updated and will be available on Linux in the (near?) future:</P>
+<P>DCPI, Wiggins-RedStone, Spike, Iprobe, NtAtom, In-Time</P>
+<P>&nbsp;</P>
+<P><HR></P>
+<B><I><FONT FACE="Arial"><P>List of Compaq performance tools available</P>
+</I></FONT><FONT SIZE=4><P>Profiling tools:</P>
+</B></FONT><P>These tools were all designed for the 21164 (EV56 and before) Alpha processor. This processor contains many chip counters that enable profiling tools to characterize the performance of binaries. Besides cycles you can track things like Icache misses, branch mispredictions, pipeline dry, and many more. The next generation processor 21264 (architecture for Alpha EV6 and EV67 chips) contains only a few chip counters. Most of the tools are currently being updated to use EV6 counters. There is a different scheme to characterize usage of 21264 systems called ProfileMe. Many of these tools will be using ProfileMe in the future. For now, ironically, even though the processors a very different, it's probably a good idea to also characterize your application on a EV56 based system even if you are targeting EV6.</P>
+<P>Many of these tools can display symbol information. Though some can read a variety of symbol formats the most common is COFF. It's typically a good idea to build your app optimized but link it /debug. This causes a nominal space increase and allows these tools to find the function name associated with a specific address. Add the /debugtype:COFF or /debugtype:both switch as well to generate COFF symbols.</P><DIR>
+
+<B><DL>
+<DD>DCPI</DD>
+</B><DD>Continuous profiling infrastructure. Instruments binaries and tracks chip counters, contains tools to analyze the collected data.</DD>
+<DD>Compaq site for info documentation and download for NT version 1.4 (21164 only): <A HREF="http://www.research.digital.com/SRC/dcpi/">DCPI</A> </DD>
+<DD>To request to review EV6 beta version when it becomes available mail: <A HREF="mailto:dcpi@pa.dec.com">dcpi@pa.dec.com</A>&nbsp;</DD>
+<B><DD>NtProf</DD>
+</B><DD>Bucket based profiling, 21164 only. (Does not modify binaries, simply tracks a subset of chip counters in a certain address space with a user defined granularity). If you link with symbols this can be a very powerful tool. </DD>
+<DD>Compaq site for download: <A HREF="http://www1.service.digital.com/nttools/">Compaq NT tools</A></DD>
+<B><DD>NtAtom</DD>
+</B><DD>NtAtom comes with several analysis tools but it's designed as a Tool Development Framework. It has an API that allows developers to instrument executable programs by inserting instrumentation points at procedure, basic block, or instruction boundaries. This is very useful if you want to write your own tools. NtAtom also comes with HiProf which is a hierarchical profiler.</DD>
+<DD>Compaq site for download: <A HREF="http://www1.service.digital.com/nttools/">Compaq NT tools</A></DD>
+<DD>To request newer beta versions (for example: HiProf with multithreaded support): <A HREF="mailto:ntatom-bugs@pa.dec.com">ntatom-bugs@pa.dec.com</A></DD>
+<B><DD>Iprobe</DD>
+</B><DD>21164 only. Another chip counting tool.that overlaps in functionality with DCPI and Acid.</DD>
+<DD><A HREF="IProbe.ZIP">Iprobe</A></DD>
+<B><DD>Acid</DD>
+</B><DD>21164 only. Acid gives a quick birds-eye view of what's going on with the CPU. It makes the chip counter information visible to perfmon. Obviously it doesn't allow you to drill down to what functions or instructions are causing the problem, but it's useful to get a quick characterization of performance, and you can use perfmon to make charts of CPU stresses during benchmarks.</DD>
+<DD>Compaq site for download: <A HREF="http://www1.service.digital.com/nttools/">Compaq NT tools</A></DD>
+<B><DD>Fixups</DD>
+</B><DD>A very common and lethal problem with quick ports is alignment faults. Fixups runs in a small window in the background and monitors alignment faults per process, allowing you to drill down to the DLL and address causing the problem. Like ACID it's a powerful birds-eye view on a performance issue. If you see significant problems you would probably use NtProf to give you address and symbol information.</DD>
+<DD>Compaq site for download: <A HREF="http://www1.service.digital.com/nttools/">Compaq NT tools</A></DD>
+</DL>
+<B><FONT SIZE=4><P>&nbsp;</P></DIR>
+
+<P>Optimization tools:</P><DIR>
+
+</FONT><DL>
+<DD>Spike</DD>
+</B><DD>Spike performs a number of profile-directed optimizations, including code layout to improve instruction cache behavior, hot-cold optimization, and register allocation</DD>
+<DD>Version 1.4 and documentation : <A HREF="http://www.alpha-processor.com/spike/spike.htm">Spike</A></DD>
+<DD>Compaq site for download of version 1.3 (does not work well with applications built with VC6): <A HREF="http://www1.service.digital.com/nttools/">Compaq NT tools</A></DD>
+<B><DD>Wiggins-RedStone</DD>
+</B><DD>Dynamic optimizer, expected availability: ?</DD>
+<B><DD>In-time</DD>
+</B><DD>Binary editing tool, expected availability: ?&nbsp;</DD>
+<B><FONT SIZE=4><DD>&nbsp;</DD>
+</DL></DIR>
+
+<P>Utilities:</P><DIR>
+
+</FONT><DL>
+<DD>Checkbuild </DD>
+</B><DD>this utility examines program components to verify whether obj, lib, dll, or exe files have been built with optimization turned on.</DD>
+<DD>Compaq site for download: <A HREF="http://www1.service.digital.com/nttools/">Compaq NT tools</A></DD>
+</DL></DIR>
+
+<P><HR></P>
+<B><I><FONT FACE="Arial"><P>API Open source porting / development utilities:</P>
+
+<UL>
+
+<UL>
+</B></I></FONT><DL>
+<DD><LI>Multiple .dsp file conversion utility ( add Alpha configurations, add remove switches and analyze dependencies to all dsp files under a given directory).</LI></DD>
+<DD><LI>Automatic stubbing of missing functions of missing 3d party libs</LI></DD>
+<DD><LI>Munging utility that mangles all non-keyword names in a source file. (if you need to send out a reproducer of proprietary source code) </LI></DD>
+<DD><LI>NTFloat similar to old NTFlop except it prints callstack and can handle VC6 symbols and outputs data to a file and continuous warnings to command window</LI></DD>
+<DD><LI>Version simple utility which recursively prints versions of binaries, or prints pertinent system information</LI></DD>
+</DL></UL>
+</UL>
+
+<P>More info and downloads: <A HREF="NT Developer Utilities.html">API tools and utilities</A></P>
+<P><HR></P>
+<B><I><FONT FACE="Arial"><P>Other Helpful Alpha sites</P>
+</B></I></FONT><DL>
+<DD><A HREF="http://www.pkware.com/shareware/Welcome.html">PkZip 2.6</A> (Alpha Native)</DD>
+<DD><A HREF="http://www.adobe.com/prodindex/acrobat/readstep.html">Adobe Acrobat</A> (X86 requires fx32)</DD>
+<DD><A HREF="http://www.digital.com/amt/fx32/index.html">Fx32</A></DD>
+<DD><A HREF="http://ftp.digital.com/pub/Digital/info/semiconductor/literature/alphaahb.pdf">Alpha Architecture Handbook</A> ( Alpha Assembly code through EV6, requires Adobe Acrobat ) </DD>
+<DD><A HREF="http://ftp.digital.com/pub/Digital/info/semiconductor/literature/dsc-library.html">Alpha Processor Architecture documentation archive</A> ( requires Adobe Acrobat )</DD>
+<DD><A HREF="http://msdn.microsoft.com/vstudio/alpha/default.asp">MS VC Alpha</A></DD>
+<DD><A HREF="http://msdn.microsoft.com/vstudio/sp/alpha.asp">VC6 SP2</A> </DD>
+<DD><A HREF="http://www.digital.com/fortran/examples/vc-example1.html">Visual C/C++ Calling Visual Fortran DLL Example</A></DD>
+<DD><A HREF="http://www.digital.com/fortran/ntspeed.html">NT: CPU Speed Without Heroics</A> ( basically Fortran with some interesting general information)</DD>
+<DD><A HREF="http://www.digital.com/alphaoem/mvi-code-ex.htm">MVI code examples</A> (Motion Video Instructions, similar to MMX instructions for Pentium)</DD>
+<DD><A HREF="http://www1.service.digital.com/open3d/">Compaq Powerstorm</A> OpenGL 3D graphics drivers</DD>
+<DD><A HREF="http://www.alphant.com/">AlphaNT Source</A> ( Lots of information here, Alpha NT mailing lists )</DD>
+<DT>&nbsp;</DT>
+<DD>&nbsp;</DD>
+</DL>
+<P>&nbsp;</P>
+<P>&nbsp;</P></BODY>
+</HTML>

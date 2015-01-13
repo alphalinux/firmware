@@ -1,0 +1,156 @@
+AlphaPC 264DP Motherboard
+
+World class performance for embedded applications
+
+By offering unrivaled performance, the AlphaPC 264DP dual-
+processor motherboard provides an easy, cost-effective solution 
+for companies developing high-performance embedded products.
+
+Alpha motherboards are designed to use standard PC components such 
+as synchronous DRAM (SDRAM) DIMMs and PCI option cards. The 
+AlphaPC 264DP offers PCI and ISA slots, onboard PCI IDE, a dual-
+port Ultra Wide SCSI controller, and 16 SDRAM DIMMs providing 
+access to up to 4 gigabytes of memory. The mainboard contains the 
+system chipset, main memory, and all I/O logic. Each daughtercard 
+contains a 500-MHz Alpha 21264 microprocessor and L2 cache. One or 
+two daughtercards may be used for uniprocessor or dual-processor 
+configurations.
+
+The AlphaPC 264DP motherboard provides a dramatic performance 
+advantage to embedded applications such as CAT, MRI, 
+telecommunication switches, and simulators. At two times the 
+performance of its nearest competitor, this product provides the 
+ultimate in performance at a competitive cost. OEMs who implement 
+the AlphaPC 264DP in their products position themselves as 
+providers of the industry's most advanced technology solutions.
+
+The AlphaPC 264DP motherboard integrates Compaq Computer 
+Corporation's engineering excellence, quality, and performance, 
+keeping Alpha products ahead of the competition.
+
+Hardware features
+*
+AlphaPC 264DP mainboard supports one or two daughtercards. Each 
+daughtercard contains:
+- One Alpha 21264 microprocessor operating at a speed of 500 MHz
+- A 2 MB, 128-bit L2 cache with late-write HSTL synchronous static 
+  RAM (SSRAM)
+*
+The 21272 core logic chipset on the mainboard interfaces to the 
+CPUs, main memory, and dual PCI buses
+*
+SDRAM memory subsystem includes:
+- 128 MB to 4 GB memory complement with 72-bit ECC
+- Four memory arrays, each consisting of four 200-pin, 72-bit 
+  buffered SDRAM DIMMs
+- Memory speed support of 83.3 MHz
+*
+PCI bus support (33 MHz):
+- Six (6) 64-bit slots (one shared with ISA slot)
+*
+Integrated PCI peripheral 
+support:
+- Integrated Adaptec(TM) AIC-7895 dual-port, Ultra Wide SCSI 
+  controller
+- PCI-to-ISA bridge using a Cypress(TM) 82C693UB hyperCache(TM) 
+  chip providing:
+	 PCI IDE for two devices (PIO mode 4)
+	 Keyboard/mouse control and time-of-year clock
+*
+ISA bus support:
+- One dedicated ISA expansion slot (shared with the 32-bit PCI 
+  slot)
+*
+Integrated ISA peripheral support:
+- SMSC(TM) FDC37C665 combination controller chip provides diskette 
+  control (2.88 MB), two serial port UARTs with modem control, and 
+  a parallel port
+*
+Daughtercard has onboard 
+5.0-V to 2.0-V voltage regulation for CPU, and 3.3-V to 1.5-V 
+voltage regulation for SSRAM:
+- The mainboard supplies +3.3 V
+- A separate power connector supplies +5.0 V
+*
+Daughtercard has onboard Flash ROM for 21264 Alpha microprocessor 
+SROM support
+
+Software features
+*
+Windows NT(TM) Alpha BIOS firmware, which supports installation of 
+Windows NT Server 4.0 (Windows NT Server operating system 
+purchased separately)
+
+Warranty
+*
+One year
+
+The AlphaPC 264DP consists of the mainboard and one or two 
+daughtercards. 
+
+Documentation and firmware are available separately.
+
+Ordering information
+Product                         Order number
+AlphaPC 264DP mainboard         21A06-B0
+AlphaPC 264DP daughtercard 
+with 500-MHz CPU and 2 MB 
+L2 cache                        21A06-M0
+
+AlphaPC 264DP characteristics
+Characteristic                  Specification
+Power supply                    650-W minimum PC power supply 
+                                providing +3.3 V, +12.0 V, -12.0 V 
+                                and +5.0 V 
+Operating temperature range     10C to 35C 
+                                (50F to 95F)
+Storage temperature range       -55C to 125C 
+                                (-67F to 257F)
+Board sizes
+Mainboard                       42.11 cm x 33.02 cm 
+                                (16.58 in x 13.0 in)
+Daughtercard                    30.48 cm x 14.99 cm 
+                                (12.0 in x 5.9 in)
+
+Related products and documentation
+Product                         Order number
+Motherboard Software Developer's Kit 
+(SDK) and Firmware Update       QR-21B02-04
+AlphaPC 264DP User's Manual     EC-RB0BA-TE
+AlphaPC 264DP Technical 
+Reference Manual                EC-RB0DA-TE
+
+For more information
+To learn more about the availability of the AlphaPC 264DP, contact 
+your local sales office. To learn more about Compaq Computer 
+Corporation's portfolio of Alpha board products, visit the Alpha 
+OEM World Wide Web Internet site: www.digital.com/alphaoem
+
+Compaq believes the information in this publication is accurate as 
+of its publication date; such information is subject to change 
+without notice.  
+
+Compaq is not responsible for any inadvertent errors.  
+
+Compaq conducts its business in a manner that conserves the 
+environment and protects the safety and health of its employees, 
+customers, and the community.  
+
+Compaq, the Compaq logo, and AlphaPC are registered in United 
+States Patent and Trademark Office.
+
+Adaptec is a trademark of Adaptec, Inc. 
+
+Cypress and hyperCache are trademarks of Cypress Semiconductor 
+Corporation. 
+
+Microsoft is a registered trademark and Windows NT is a trademark 
+of Microsoft Corporation. 
+
+SMSC is a trademark of Standard Microsystems Corporation. 
+
+Other product names mentioned herein may be trademarks and/or 
+registered trademarks of their respective companies.
+
+Printed in U.S.A. EC-F9643-56 Rel. # 114/98 12 64 2.5 Copyright 
+1998 Compaq Computer Corporation. All Rights Reserved.

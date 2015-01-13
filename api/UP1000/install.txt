@@ -1,0 +1,356 @@
+
+- Contents of floppy
+
+apb.exe         Alpha Processor bootloader v. 1.0.1.
+apb.cfg         Sample apb configuration file.
+up1000.pal      PAL code for Linux on UP1000.
+vmlinux.gz      Linux kernel v. 2.2.12 with UP1000 patch.
+System.gz       Kernel Symbol table.
+INSTALL         This file.
+
+
+- Installation of RedHat Linux from CD ROM
+
+1. Copy this directory to a floppy disk.
+
+2. Insert floppy disk and RedHat Linux CD ROM.
+   This installation guide assumes 
+   - hard disk is connected to primary channel as a master 
+   - CD ROM drive is connected to primary channel as a slave 
+
+3. From AlphaBIOS run apb.exe as a utility program.
+   [F2]->Utility->Run maintanace program
+
+4. At the apb command prompt, type
+     apb> cd floppy
+     apb> bootl up1000.pal vmlinux.gz root=/dev/hdb
+   This assumes you have an ATAPI CD ROM drive which Linux recognizes
+   as /dev/hdb (you may have to try /dev/hda, /dev/hdc, etc. depending
+   on your configuration.  For a SCSI CD ROM drive,  /dev/scd or
+   /dev/scd0.
+
+5. This should get you into the RedHat installation program. During the
+   disk partitioning phase of the installation be sure to allocate a small
+   FAT partition to be used as the "boot" partition.  10 MB should be ample.
+   If you choose 'Workstation' or 'Server' package then you don't need to
+   partition the disk by yourself. 
+   * Follow the common redhat installation procedure.
+   * During install, Don't configure X server,
+   * Select 'Startup through ARC console' on timezone setup menu.
+
+6. Due to bugs in redhat 6.0, FAT partition is not formatted during installation
+   depends on package selection.
+   So, After installation, run apb.exe from flopy again and at the 
+   apb command prompt, type
+      apb> cd floppy
+      apb> bootl up1000.pal vmlinux.gz root=/dev/hda5 single
+   You'll get shell prompt then type following commands.
+      # mkfs -t msdos /dev/hda1
+      # mount /dev/hda1 /dos
+      # mcopy a:*.* /dos
+      # gzip -dc /dos/system.gz > /boot/System.map
+      # ln -s Tsunami /etc/alpha_systype
+      # init 6
+
+8. Configure the OS selection menu of AlphaBIOS to start apb.exe
+   from the boot partition.
+   In 'OS Selection' menu([F2]->Operating system->OS selection setup), 
+   Make an entry like this.
+
+       Boot name: Linux
+       Boot file: Disk 0 Partition 1   \apb.exe
+       OS Path  : Disk 0 Partition 2   \winnt
+       OS Options:  
+
+   OS Path doesn't have any meaning, just leave it intact.
+
+9. You can run apb from hard disk by selecting what you configured on step 8.
+
+10. Set the environment variable APB_DEVICE to be the AlphaBIOS name 
+   of the boot partition.
+   For example,
+      apb> setenv APB_DEVICE scsi(0)disk(0)rdisk(0)partition(1)
+   type 'cd' once to make above environment variable change to be applied.
+      apb> cd
+
+11. Now, You can boot linux by selecting 'Linux' on BIOS' OS boot menu 
+   and then type this on apb prompt
+
+      apb> bootl up1000.pal vmlinux.gz root=/dev/hda5 
+
+   If you don't want to type above long line everytime. You have two options
+	1. Create apb.cfg file under /dos directory, Its contents look like
+
+		linux|bootl up1000.pal vmlinux.gz root=/dev/hda5
+
+	   then you can boot linux by typying 
+
+	      apb> boot linux
+
+	2. Put option string in OS Selection setup menu of BIOS setup.
+
+	       Boot name: Linux
+	       Boot file: Disk 0 Partition 1   \apb.exe
+	       OS Path  : Disk 0 Partition 2   \winnt
+	       OS Options: bootl up1000.pal vmlinux.gz root=/dev/hda5
+
+	   Then this setup will boot linux without apb prompt.
+
+
+-------------------------------------------------------------------------------
+
+
+	APB -- Alpha Processor Bootstrap Loader for AlphaBIOS
+
+			Alpha Processor, Inc.
+			 130C Baker Ave. Ext.
+			Concord, MA 01742, USA
+
+		   David Daniel, Soohoon Lee, Stig Telfer 
+		customer.support@alpha-processor.com
+
+========================================================================
+
+	     Copyright (c) 1999, Alpha Processor, Inc.
+			All Rights Reserved
+
+Permission to use, copy, modify, and distribute this software and its
+documentation for any purpose and without fee is hereby granted,
+provided that the copyright notice and this permission notice appear
+in all copies of software and supporting documentation, and that the
+name of Alpha Processor not be used in advertising or publicity
+pertaining to distribution of the software without specific, written
+prior permission.  Alpha Processor grants this permission provided
+that you prominently mark, as not part of the original, any
+modifications made to this software or documentation.
+
+Alpha Processor disclaims all warranties and/or guarantees with regard
+to this software, including all implied warranties of fitness for a
+particular purpose and merchantability, and makes no representations
+regarding the use of, or the results of the use of, the software and
+documentation in terms of correctness, accuracy, reliability,
+currentness or otherwise; and you rely on the software, documentation
+and results solely at your own risk.
+
+========================================================================
+
+
+0. Introduction
+
+APB is a bootstrap loader for Alpha processor based systems with
+AlphaBIOS firmware.  It is primarily intended to be used for booting
+Linux, though it may also be useful for free BSD derived systems.
+
+APB borrows ideas and some code from many places, notably Linux and
+other Linux loaders for Alpha systems (aboot and MILO), and the ARCDos
+example in the ARC Application Development Kit.  APB can also be
+linked against zlib to support reading compressed kernel and PALcode
+images.  See the file CREDITS for details.
+
+
+1. Using APB
+
++ Overview
+
+APB presents a simple command line interface with the following
+commands
+
+  boot TARGET                   boot a target in the configuration file
+  bootl PALCODE KERNEL ARG1 ... boot Unix
+  cd DEVICE                     set the current device
+  cp | copy FILE1 FILE2         copy files
+  exit | quit                   exit to AlphaBIOS
+  halt | reset                  system shutdown options
+  ls | dir                      list files on the current device
+  mkdir DIR                     make a directory
+  more FILE                     list a file
+  mv | rename FILE1 FILE2       rename a file
+  pwd                           print the current device
+  rm | delete FILE              delete a file
+  printenv [NAME]               print environment variable(s)
+  setenv [NAME [VAL]]           (un)set environment variable
+  show targets | devices        show information
+
+At any time an AlphaBIOS is device is selected as the default or
+current device.  On initialization this is set to the value of the
+APB_DEVICE firmware environment variable, or "multi(0)disk(0)fdisk(0)"
+(usually the floppy device) if this is not set.
+
+To change the default device, use the "cd" command. For example
+
+  cd scsi(0)disk(0)rdisk(0)partition(2)\os\linux
+
+sets the default device to be the second partition of the disk 0 on
+the 0th SCSI controller.  To save this for future invocations, set the
+APB_DEVICE firmware environment variable using the "setenv" command:
+
+  setenv APB_DEVICE scsi(0)disk(0)rdisk(0)partition(2)\os\linux
+
+After this you can return to this device using "cd".
+
+Also the special targets
+
+  cd floppy
+  cd cdrom
+
+will take you to the (first) floppy and CD-ROM drives respectively.
+
+If there is a file system supported by AlphaBIOS on the device -- FAT,
+ISO 9660 (CD-ROM) -- then a directory listing can be obtained using
+the "dir" or "ls" command:
+
+  apb> ls
+  Directory listing of scsi(0)disk(0)rdisk(0)partition(2):
+  APB.CFG
+  APB.EXE
+  LINUX.PAL
+  VMLINUX
+  
+
++ Booting from disk
+
+The recommended way to boot a system using APB is set aside a small
+(10 - 30 MB) FAT partition on one disk to be used as a boot partition.
+The following files should be placed on the boot partition:
+
+  The APB image (APB.EXE)
+  The PALcode image
+  The kernel image
+  An optional configuration file "APB.CFG" (see below)
+
+Run APB (either from floppy or from the boot partition and use it to
+set the environment variable APB_DEVICE to the name of the boot
+partition.  For example if the boot partition is the first partition
+on a SCSI disk with SCSI ID 3 on the first SCSI controller, and the files are in directory \os\linux set APB_DEVICE using
+
+  apb> setenv APB_DEVICE scsi(0)disk(3)rdisk(0)partition(1)\os\linux
+
+To enable autoboot
+
+  apb> setenv APB_AUTOBOOT 1
+
+This performs the first boot command it finds in the APB configuration
+file, unless interrupted.
+
+Otherwise boot manually using a command such as
+
+  apb> bootl palcode kernel [kernel_arg1 [kernel_arg1 ...]]
+
+or use one of the labels defined in the APB configuration file, for
+example
+
+  apb> boot linux
+
+See below for the configuration file format.
+
++ Environment variables
+
+APB uses the following firmware environment variables to set default
+noptions:
+
+  APB_DEVICE            Default device for all operations
+  APB_AUTOBOOT          Determines whether an autoboot should be attempted
+
+If these are not set on invocation, then they are set to reasonable
+values, namely
+
+  APB_DEVICE=multi(0)disk(0)fdisk(0)
+  APB_AUTOBOOT=0
+
++ Configuration file
+
+APB consults a configuration file "APB.CFG" that is assumed to be
+located at the current device path (initially given by environment
+variable APB_DEVICE).  The file consists of lines that are either
+comments, or boot commands prefixed with a mnemonic label. For example
+
+  # This is comment
+  linux-2.2|bootl linux.pal vmlinux.gz root=/dev/sda3
+  linux-2.0|bootl linux.pal vml20.gz root=/dev/sda3
+
+In this case, to boot linux-2.2, type
+
+  apb> boot linux-2.2
+
+which is equivalent to
+
+  apb> bootl linux.pal vmlinux.gz root=/dev/sda3
+
+If the AUTO_BOOT environment variable is set TRUE, then the default
+configuration will be booted after 10 seconds, unless a key is
+pressed.
+
++ Boot devices
+
+APB can boot from any filesystem supported by AlphaBIOS.  At present
+these are limited to FAT, NTFS and ISO 9660 (CD-ROM).
+
++ Booting from a network device
+
+Not yet implemented.
+
+
+2. Building APB
+
+APB is an AlphaBIOS/ARC application.  Currently it must be built on an
+Microsoft Windows NT 4.0 Alpha processor system, with Microsoft Visual
+C++ 5.0 (or higher), the Microsoft Software Development Kit (SDK) and
+Device Driver Development Kit (DDK) for NT 4.0, and Compaq ARC
+Application Development Kit (ADK) 1.3.
+
+Optionally, APB can be linked against zlib (a free compression
+library) to support reading compressed kernel and PALcode images.
+
+To build, open a command window, set up the environment:
+
+  VC++ (e.g "C:Program Files\DevStudio\VC\bin\vcvars32.bat")
+  DDK (e.g. "C:\DDK\bin\setenv.bat C:\DDK")
+  ADK (e.g. "set ADK=C:\adkv13\adk")
+
+and then and make using nmake.  For example:
+
+  C:\apb-1.0> nmake
+
+where the DDK has been installed on the C: drive.
+
+If building with compressed file support, obtain and unpack zlib
+(http://www.cdrom.com/pub/infozip/zlib/), set the variable ZLIB to
+the zlib directory, and then make.  For example
+
+  C:\apb-1.0> set ZLIB=C:\zlib-1.1.3
+  C:\apb-1.0> nmake
+
+In either case, the executable is placed in the "obj\alpha"
+subdirectory.
+
+
+3. What APB does
+
+Booting Linux with APB involves the following steps:
+
+  AlphaBIOS loads and transfers control to APB.
+  
+  APB is called with an argument specifying the device (as known to
+  AlphaBIOS) from which to read the Linux kernel, and additional
+  arguments to be passed on to the kernel.
+  
+  APB sets up the environment for Linux, including loading and
+  switching to the correct PAL code, setting up the HWRPB, copying
+  kernel arguments to the right location in memory etc.
+  
+  APB reads the Linux kernel image into memory from the specified
+  device (raw disk initially, and eventually filesystems or network
+  devices via bootp) and transfers control.
+
+
+4. Modifying APB
+
+APB has been written with the aim of maintaining platform independence
+across all AlphaBIOS (and ARC) systems.  Furthermore, all dependence
+on the ARC API has been isolated in the file "arc.c", so that porting
+to another firmware environment should not be too difficult as long as
+it provides a sufficiently complete API.
+
+Additional user commands can be incorporated through the command
+dispatch table in "cmd.c".
+
